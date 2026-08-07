@@ -1,0 +1,189 @@
+import json
+import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from app.services.llm_gateway import LLMGateway
+from app.modules.experience_engine.schemas import DecomposeResponse, ThreeCFourPResponse, EvidenceItem, AnchorItem
+from app.modules.experience_engine.prompts import THREE_C_FOUR_P_SYSTEM, EVIDENCE_SYSTEM, ANCHOR_SYSTEM
+
+class ExperienceEngineService:
+    def __init__(self, db: AsyncSession, llm_gateway: LLMGateway):
+        self.db = db
+        self.llm_gateway = llm_gateway
+        
+    async def decompose(self, experience_id: str, user_id: str) -> DecomposeResponse:
+        # Fetch the experience
+        query = text("SELECT * FROM experiences WHERE id = :id AND user_id = :user_id")
+        result = await self.db.execute(query, {"id": experience_id, "user_id": user_id})
+        experience = result.mappings().first()
+        
+        if not experience:
+            raise Exception("Experience not found or not owned by user")
+            
+        content_to_analyze = f"Title: {experience.get('title', '')}\nDescription: {experience.get('description', '')}"
+        if experience.get('situation'):
+            content_to_analyze += f"\nSituation: {experience['situation']}"
+        if experience.get('task'):
+            content_to_analyze += f"\nTask: {experience['task']}"
+        if experience.get('action'):
+            content_to_analyze += f"\nAction: {experience['action']}"
+        if experience.get('result'):
+            content_to_analyze += f"\nResult: {experience['result']}"
+            
+        # Call LLM for 3C4P
+        three_c_four_p_res = await self.llm_gateway.generate_json(
+            prompt=content_to_analyze,
+            system_prompt=THREE_C_FOUR_P_SYSTEM
+        )
+        
+        # Call LLM for Evidence
+        evidence_res = await self.llm_gateway.generate_json(
+            prompt=content_to_analyze,
+            system_prompt=EVIDENCE_SYSTEM
+        )
+        
+        # Call LLM for Anchors
+        anchors_res = await self.llm_gateway.generate_json(
+            prompt=content_to_analyze,
+            system_prompt=ANCHOR_SYSTEM
+        )
+        
+        # Ensure 3C4P Response matches Schema
+        three_c_four_p_id = str(uuid.uuid4())
+        
+        insert_3c4p_query = text("""
+            INSERT INTO experience_3c4p (id, experience_id, customer, company_context, competitor, place, product, price, promotion)
+            VALUES (:id, :exp_id, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
+        """)
+        
+        await self.db.execute(insert_3c4p_query, {
+            "id": three_c_four_p_id,
+            "exp_id": experience_id,
+            "customer": json.dumps(three_c_four_p_res.get('customer', {})),
+            "company_context": json.dumps(three_c_four_p_res.get('company_context', {})),
+            "competitor": json.dumps(three_c_four_p_res.get('competitor', {})),
+            "place": json.dumps(three_c_four_p_res.get('place', {})),
+            "product": json.dumps(three_c_four_p_res.get('product', {})),
+            "price": json.dumps(three_c_four_p_res.get('price', {})),
+            "promotion": json.dumps(three_c_four_p_res.get('promotion', {}))
+        })
+        
+        # Insert Evidence and Metrics
+        evidence_items = []
+        insert_evidence_query = text("""
+            INSERT INTO evidence (id, experience_id, claim, evidence_text, source, status, is_quantitative)
+            VALUES (:id, :exp_id, :claim, :evidence_text, :source, :status, :is_quantitative)
+        """)
+        
+        evidence_list = evidence_res.get("evidence", [])
+        for ev in evidence_list:
+            ev_id = str(uuid.uuid4())
+            await self.db.execute(insert_evidence_query, {
+                "id": ev_id,
+                "exp_id": experience_id,
+                "claim": ev.get("claim"),
+                "evidence_text": ev.get("evidence_text"),
+                "source": ev.get("source"),
+                "status": ev.get("status", "UNKNOWN"),
+                "is_quantitative": ev.get("is_quantitative", False)
+            })
+            evidence_items.append({
+                "id": ev_id,
+                "claim": ev.get("claim"),
+                "evidence_text": ev.get("evidence_text"),
+                "source": ev.get("source"),
+                "status": ev.get("status", "UNKNOWN"),
+                "is_quantitative": ev.get("is_quantitative", False)
+            })
+            
+        insert_metrics_query = text("""
+            INSERT INTO metrics (id, experience_id, claim, metric_type, before_value, after_value, unit, raw_number)
+            VALUES (:id, :exp_id, :claim, :metric_type, :before_value, :after_value, :unit, :raw_number)
+        """)
+        metrics_list = evidence_res.get("metrics", [])
+        for met in metrics_list:
+            met_id = str(uuid.uuid4())
+            await self.db.execute(insert_metrics_query, {
+                "id": met_id,
+                "exp_id": experience_id,
+                "claim": met.get("claim"),
+                "metric_type": met.get("metric_type", "INPUT"),
+                "before_value": met.get("before_value"),
+                "after_value": met.get("after_value"),
+                "unit": met.get("unit"),
+                "raw_number": met.get("raw_number", True)
+            })
+            
+        # Insert Anchors
+        anchor_items = []
+        insert_anchor_query = text("""
+            INSERT INTO experience_anchors (id, experience_id, anchor_type, summary, skills)
+            VALUES (:id, :exp_id, :anchor_type, :summary, :skills)
+        """)
+        
+        anchors_list = anchors_res.get("anchors", [])
+        for anc in anchors_list:
+            anc_id = str(uuid.uuid4())
+            skills_str = json.dumps(anc.get("skills", []))
+            await self.db.execute(insert_anchor_query, {
+                "id": anc_id,
+                "exp_id": experience_id,
+                "anchor_type": anc.get("anchor_type"),
+                "summary": anc.get("summary"),
+                "skills": skills_str
+            })
+            anchor_items.append({
+                "id": anc_id,
+                "anchor_type": anc.get("anchor_type"),
+                "summary": anc.get("summary"),
+                "skills": anc.get("skills", [])
+            })
+            
+        await self.db.commit()
+        
+        three_c_four_p_res["id"] = three_c_four_p_id
+        three_c_four_p_res["experience_id"] = experience_id
+        
+        return DecomposeResponse(
+            three_c_four_p=ThreeCFourPResponse(**three_c_four_p_res),
+            evidence=[EvidenceItem(**ev) for ev in evidence_items],
+            anchors=[AnchorItem(**anc) for anc in anchor_items],
+            message="Decomposition complete"
+        )
+        
+    async def get_3c4p(self, experience_id: str, user_id: str) -> dict:
+        # Verify ownership
+        query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
+        check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
+        if not check_res.first():
+            raise Exception("Experience not found or not owned by user")
+            
+        query = text("SELECT * FROM experience_3c4p WHERE experience_id = :exp_id")
+        result = await self.db.execute(query, {"exp_id": experience_id})
+        return dict(result.mappings().first()) if result.mappings().first() else None
+        
+    async def get_evidence(self, experience_id: str, user_id: str) -> list[dict]:
+        # Verify ownership
+        query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
+        check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
+        if not check_res.first():
+            raise Exception("Experience not found or not owned by user")
+            
+        query = text("SELECT * FROM evidence WHERE experience_id = :exp_id")
+        result = await self.db.execute(query, {"exp_id": experience_id})
+        return [dict(row) for row in result.mappings().all()]
+        
+    async def get_anchors(self, experience_id: str, user_id: str) -> list[dict]:
+        # Verify ownership
+        query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
+        check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
+        if not check_res.first():
+            raise Exception("Experience not found or not owned by user")
+            
+        query = text("SELECT * FROM experience_anchors WHERE experience_id = :exp_id")
+        result = await self.db.execute(query, {"exp_id": experience_id})
+        rows = [dict(row) for row in result.mappings().all()]
+        for row in rows:
+            if isinstance(row.get('skills'), str):
+                row['skills'] = json.loads(row['skills'])
+        return rows

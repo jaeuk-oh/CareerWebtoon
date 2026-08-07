@@ -1,0 +1,24 @@
+# JS/React
+node_modules/
+build/
+dist/
+coverage/
+
+# Python/FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# OS/Logs
+.DS_Store
+*.log
+
+# Environment variables
+.env
+.env.*
+!.env.example
