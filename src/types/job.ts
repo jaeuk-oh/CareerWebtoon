@@ -1,8 +1,13 @@
-export interface Job {
+export interface JobPipeline {
   id: string;
-  title: string;
-  company: string;
+  targetCompany: string;
+  targetRole: string;
   jdText: string;
-  requiredSkills: string[];
+  status: 'jd_analysis' | 'matching' | 'strategy' | 'editor' | 'defense';
+  matchScore: number;
+  extractedKeywords: string[];
+  primaryStrategy?: string;
+  secondaryStrategy?: string;
+  excludedProjects?: string[];
   createdAt: string;
 }

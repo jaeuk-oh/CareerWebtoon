@@ -1,19 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# CareerCraft
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-https://ai.studio/apps/d94bedf7-c1a1-452d-87cd-f855fc9e9fa5
+A career document (resume/cover letter) generation tool. React + Vite frontend, FastAPI backend powered by the NVIDIA API Catalog.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js, Python 3.11+
 
+### Frontend
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```
+npm install
+npm run dev
+```
+
+### Backend
+
+```
+cd backend
+pip install -r ../requirements.txt
+cp .env.example .env   # fill in NVIDIA_API_KEY, SUPABASE_*, etc.
+uvicorn app.main:app --reload
+```
+
+The Vite dev server proxies `/api` requests to the backend at `http://127.0.0.1:8000`.

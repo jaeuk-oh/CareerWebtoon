@@ -1,6 +1,6 @@
 import { Experience } from '../types/experience';
-import { Job } from '../types/job';
-import { Document } from '../types/document';
+import { JobPipeline } from '../types/job';
+import { DocumentDraft } from '../types/document';
 
 const API_BASE = '/api/v1';
 
@@ -15,11 +15,11 @@ export const api = {
     }).then(res => res.json()),
   },
   jobs: {
-    list: (): Promise<Job[]> => fetch(`${API_BASE}/jobs`).then(res => res.json()),
+    list: (): Promise<JobPipeline[]> => fetch(`${API_BASE}/jobs`).then(res => res.json()),
   },
   documents: {
-    list: (): Promise<Document[]> => fetch(`${API_BASE}/documents`).then(res => res.json()),
-    generate: (jobId: string, experienceIds: string[]): Promise<Document> => fetch(`${API_BASE}/documents/generate`, { 
+    list: (): Promise<DocumentDraft[]> => fetch(`${API_BASE}/documents`).then(res => res.json()),
+    generate: (jobId: string, experienceIds: string[]): Promise<DocumentDraft> => fetch(`${API_BASE}/documents/generate`, { 
       method: 'POST', 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, experienceIds }) 

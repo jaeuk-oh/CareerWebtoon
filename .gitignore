@@ -18,6 +18,10 @@ env/
 .DS_Store
 *.log
 
+# Agent/tool state
+.agent/
+.omc/
+
 # Environment variables
 .env
 .env.*
