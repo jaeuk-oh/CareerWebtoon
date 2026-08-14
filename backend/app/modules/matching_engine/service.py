@@ -33,33 +33,31 @@ class MatchingEngineService:
             # Fetch experience anchors
             anchors_res = await session.execute(
                 text("""
-                    SELECT id, experience_id, anchor_type, content 
-                    FROM experience_anchors 
+                    SELECT id, experience_id, anchor_type, summary
+                    FROM experience_anchors
                     WHERE experience_id IN (SELECT id FROM experiences WHERE user_id = :user_id)
                 """),
                 {"user_id": user_id}
             )
             anchors = anchors_res.fetchall()
-            
+
             exp_dict = {}
             for e in experiences:
                 exp_dict[e.id] = {"id": e.id, "title": e.title, "description": e.description, "anchors": []}
             for a in anchors:
                 if a.experience_id in exp_dict:
                     exp_dict[a.experience_id]["anchors"].append({
-                        "id": a.id, "type": a.anchor_type, "content": a.content
+                        "id": a.id, "type": a.anchor_type, "content": a.summary
                     })
 
             # Build context
             context = f"Job Requirements:\\n{json.dumps(jd_analysis.get('requirements', []), ensure_ascii=False)}\\n\\n"
             context += f"Experiences:\\n{json.dumps(list(exp_dict.values()), ensure_ascii=False)}"
 
-            # Call LLM (Critic model via generate_json / evaluate_json logic)
-            # Assuming analyze_json or generate_json for now as per gateway
-            match_result = await self.llm.generate_json(
+            # Call LLM (critic model, used for evaluation-style tasks)
+            match_result = await self.llm.evaluate_json(
                 prompt=context,
-                system_prompt=MATCHING_SYSTEM,
-                model_type="critic" # Using critic for evaluation if supported, else default
+                system_prompt=MATCHING_SYSTEM
             )
 
             # Save matches

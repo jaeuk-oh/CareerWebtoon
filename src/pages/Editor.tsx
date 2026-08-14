@@ -13,12 +13,15 @@ import {
   Save,
   Check,
   Zap,
-  TrendingUp
+  TrendingUp,
+  Loader2,
+  FileQuestion
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { NavigationHeader } from '../components/NavigationHeader';
+import { FrontendDocType } from '../lib/api';
 
 interface EditorViewProps {
   onNavigate: (view: ViewState) => void;
@@ -28,20 +31,32 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const {
     documentDraft,
     updateDocumentContent,
-    applyEvidenceFix,
+    generateDocument,
+    evidenceValidation,
+    runEvidenceValidation,
     defenseMessages,
     sendDefenseMessage,
+    runDefenseGeneration,
     pipelines,
     activePipelineId,
+    setActivePipelineId,
     showToast
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'strategy' | 'evidence' | 'defense'>('defense');
-  const [docType, setDocType] = useState<'resume' | 'career' | 'coverLetter'>('coverLetter');
+  const [docType, setDocType] = useState<FrontendDocType>('coverLetter');
   const [userInputMessage, setUserInputMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [isGeneratingDefense, setIsGeneratingDefense] = useState(false);
 
   const activePipeline = pipelines.find((p) => p.id === activePipelineId) || pipelines[0];
+  const generatedDocId = documentDraft.generatedDocIds?.[docType];
+  const hasGeneratedDoc = Boolean(generatedDocId);
+  const isValidationCurrent = Boolean(
+    evidenceValidation && generatedDocId && evidenceValidation.document_id === generatedDocId
+  );
 
   const handleExportPDF = () => {
     showToast('PDF 내보내기가 실행되었습니다.', 'info');
@@ -66,6 +81,50 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     const polished = current + '\n\n[AI 3C4P 앵커링 강화: 지원자의 수치 검증 근거가 서두에 더욱 명확하게 정제되었습니다.]';
     updateDocumentContent(docType, polished);
     showToast('AI가 문장을 다듬고 3C4P 앵커를 강화했습니다.', 'success');
+  };
+
+  const handleGenerateDocument = async () => {
+    if (isGeneratingDoc) return;
+    if (!activePipelineId && activePipeline) {
+      // Landed on the editor directly without explicitly selecting a pipeline;
+      // fall back to the pipeline already shown in the strategy panel.
+      setActivePipelineId(activePipeline.id);
+    }
+    setIsGeneratingDoc(true);
+    try {
+      await generateDocument(docType);
+    } catch (err) {
+      console.error(err);
+      showToast('AI 초안 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setIsGeneratingDoc(false);
+    }
+  };
+
+  const handleRunValidation = async () => {
+    if (isValidating) return;
+    setIsValidating(true);
+    try {
+      await runEvidenceValidation(docType);
+    } catch (err) {
+      console.error(err);
+      showToast('수치 검증에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleGenerateDefenseQuestions = async () => {
+    if (isGeneratingDefense) return;
+    setIsGeneratingDefense(true);
+    try {
+      await runDefenseGeneration(docType);
+    } catch (err) {
+      console.error(err);
+      showToast('방어 질문 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setIsGeneratingDefense(false);
+    }
   };
 
   const handleQuickChipClick = (chipText: string) => {
@@ -169,13 +228,23 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
               </button>
             </div>
 
-            <button
-              onClick={handleAiPolish}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-            >
-              <Sparkles size={14} className="text-emerald-600" />
-              <span>✨ AI 3C4P 문체 다듬기</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleGenerateDocument}
+                disabled={isGeneratingDoc}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+              >
+                {isGeneratingDoc ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+                <span>{isGeneratingDoc ? 'AI 초안 생성 중...' : hasGeneratedDoc ? 'AI 초안 다시 생성' : 'AI 초안 생성'}</span>
+              </button>
+              <button
+                onClick={handleAiPolish}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+              >
+                <Sparkles size={14} className="text-emerald-600" />
+                <span>✨ AI 3C4P 문체 다듬기</span>
+              </button>
+            </div>
           </div>
 
           {/* Textarea Area */}
@@ -255,46 +324,111 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
             {/* TAB 2: EVIDENCE VERIFICATION */}
             {activeTab === 'evidence' && (
               <>
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-                  <div className="flex gap-2.5 items-start">
-                    <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-900">검증 완료: 입력 수치 일치 (VERIFIED)</h4>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Candidate Vault 저장 경험 데이터(7일 → 2일 소요시간 71.4% 단축)와 정확히 일치합니다.
-                      </p>
-                    </div>
+                {!hasGeneratedDoc ? (
+                  <div className="bg-white p-6 rounded-2xl border border-dashed border-slate-200 text-center">
+                    <FileQuestion size={28} className="mx-auto text-slate-300 mb-2.5" />
+                    <p className="text-xs font-bold text-slate-700 mb-1">아직 검증할 초안이 없습니다</p>
+                    <p className="text-[11px] text-slate-500">
+                      상단의 <strong>"AI 초안 생성"</strong> 버튼으로 지원서를 먼저 만들어주세요.
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleRunValidation}
+                      disabled={isValidating}
+                      className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      {isValidating ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                      <span>
+                        {isValidating
+                          ? '수치 검증 실행 중...'
+                          : isValidationCurrent
+                          ? '수치 검증 다시 실행'
+                          : '수치 검증 실행'}
+                      </span>
+                    </button>
 
-                <div className="bg-white p-4 rounded-2xl border border-amber-300 shadow-2xs relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500"></div>
-                  <div className="flex gap-2.5 items-start mb-3">
-                    <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-bold text-xs text-slate-900">주의: 미검증 수치 감지 (UNVERIFIED)</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        '40% 효율 향상' 문장은 Vault에 직접 측정 근거가 부족합니다.
-                      </p>
-                    </div>
-                  </div>
+                    {isValidationCurrent && evidenceValidation && (
+                      <>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+                          <div className="flex justify-between items-center mb-2.5">
+                            <span className="text-xs font-bold text-slate-900">종합 검증 점수</span>
+                            <span className="text-base font-bold text-emerald-700">
+                              {Math.round(evidenceValidation.overall_score * 100)}점
+                            </span>
+                          </div>
+                          <div className="flex gap-2 text-[11px] font-bold">
+                            <span className="flex-1 text-center py-1.5 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200">
+                              검증됨 {evidenceValidation.verified}
+                            </span>
+                            <span className="flex-1 text-center py-1.5 bg-amber-50 text-amber-800 rounded-lg border border-amber-200">
+                              주의 {evidenceValidation.flagged}
+                            </span>
+                            <span className="flex-1 text-center py-1.5 bg-rose-50 text-rose-800 rounded-lg border border-rose-200">
+                              미검증 {evidenceValidation.unverified}
+                            </span>
+                          </div>
+                        </div>
 
-                  <div className="bg-amber-50 p-3 rounded-xl text-xs text-amber-950 mb-3 border-l-2 border-amber-400 font-medium">
-                    추천 수정안: "팀 간 의사소통 지연을 방지하고 예정된 일정 내 성공적으로 런칭했습니다."
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      applyEvidenceFix(
-                        '팀의 업무 효율을 40% 이상 크게 향상시켰습니다.',
-                        '팀 간 의사소통 지연을 방지하고 예정된 일정 내 성공적으로 런칭했습니다.'
-                      )
-                    }
-                    className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-                  >
-                    수정안 즉시 적용하기
-                  </button>
-                </div>
+                        {evidenceValidation.claims.length === 0 ? (
+                          <p className="text-[11px] text-slate-500 text-center py-4">
+                            문서에서 검증할 수치 claim이 발견되지 않았습니다.
+                          </p>
+                        ) : (
+                          evidenceValidation.claims.map((claim) => {
+                            const isVerified = claim.status === 'verified';
+                            const isFlagged = claim.status === 'flagged';
+                            return (
+                              <div
+                                key={claim.claim_id}
+                                className={`bg-white p-4 rounded-2xl shadow-2xs relative overflow-hidden ${
+                                  isVerified
+                                    ? 'border border-slate-200/80'
+                                    : isFlagged
+                                    ? 'border border-amber-300'
+                                    : 'border border-rose-300'
+                                }`}
+                              >
+                                {!isVerified && (
+                                  <div
+                                    className={`absolute top-0 left-0 w-1.5 h-full ${
+                                      isFlagged ? 'bg-amber-500' : 'bg-rose-500'
+                                    }`}
+                                  ></div>
+                                )}
+                                <div className="flex gap-2.5 items-start">
+                                  {isVerified ? (
+                                    <CheckCircle2 size={18} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                                  ) : (
+                                    <AlertTriangle
+                                      size={18}
+                                      className={`${isFlagged ? 'text-amber-600' : 'text-rose-600'} flex-shrink-0 mt-0.5`}
+                                    />
+                                  )}
+                                  <div className="min-w-0">
+                                    <h4 className="font-bold text-xs text-slate-900">
+                                      {isVerified ? '검증 완료 (VERIFIED)' : isFlagged ? '주의: 근거 보강 필요 (FLAGGED)' : '미검증 (UNVERIFIED)'}
+                                    </h4>
+                                    <p className="text-[11px] text-slate-600 mt-1 break-words">{claim.claim_text}</p>
+                                    {claim.evidence_text && (
+                                      <p className="text-[11px] text-slate-500 mt-1">근거: {claim.evidence_text}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                {claim.issues.length > 0 && (
+                                  <div className="bg-amber-50 p-2.5 rounded-xl text-[11px] text-amber-950 mt-2.5 border-l-2 border-amber-400 font-medium">
+                                    {claim.issues.join(' / ')}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
               </>
             )}
 
@@ -320,6 +454,21 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                     ></motion.div>
                   </div>
                 </div>
+
+                {/* AI Defense Question Generation */}
+                <button
+                  onClick={handleGenerateDefenseQuestions}
+                  disabled={isGeneratingDefense || !hasGeneratedDoc}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  {isGeneratingDefense ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
+                  <span>{isGeneratingDefense ? '압박 질문 생성 중...' : 'AI 실전 압박 질문 생성'}</span>
+                </button>
+                {!hasGeneratedDoc && (
+                  <p className="text-[11px] text-slate-400 text-center -mt-2">
+                    먼저 상단에서 AI 초안을 생성하면 압박 질문을 만들 수 있어요.
+                  </p>
+                )}
 
                 {/* Response Recommendation Chips */}
                 <div className="space-y-1.5">

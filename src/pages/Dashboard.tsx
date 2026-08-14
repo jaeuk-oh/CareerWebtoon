@@ -31,6 +31,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const {
     user,
     experiences,
+    experiencesLoading,
     pipelines,
     deleteExperience,
     deletePipeline,
@@ -154,7 +155,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   <Database size={16} /> Candidate Vault
                 </span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'vault' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                  {experiences.length}
+                  {experiencesLoading ? '···' : experiences.length}
                 </span>
               </button>
 
@@ -259,11 +260,19 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     <div className="space-y-2.5 mb-6">
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                         <span className="text-xs font-semibold text-slate-600">구조화된 3C4P 경험</span>
-                        <span className="text-sm font-bold text-slate-900">{experiences.length}개</span>
+                        {experiencesLoading ? (
+                          <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
+                        ) : (
+                          <span className="text-sm font-bold text-slate-900">{experiences.length}개</span>
+                        )}
                       </div>
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                         <span className="text-xs font-semibold text-slate-600">수치 검증 증거 자산</span>
-                        <span className="text-sm font-bold text-emerald-700">{experiences.filter(e => e.c3p4?.product).length}건</span>
+                        {experiencesLoading ? (
+                          <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
+                        ) : (
+                          <span className="text-sm font-bold text-emerald-700">{experiences.filter(e => e.c3p4?.product).length}건</span>
+                        )}
                       </div>
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
                         <span className="text-xs font-semibold text-slate-600">진행 중 지원 파이프라인</span>
@@ -432,7 +441,24 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 />
               </div>
 
-              {filteredExperiences.length === 0 ? (
+              {experiencesLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5" aria-busy="true" aria-live="polite">
+                  <span className="sr-only">경험 자산을 불러오는 중입니다...</span>
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs animate-pulse space-y-2.5"
+                      aria-hidden="true"
+                    >
+                      <div className="h-3.5 w-1/3 bg-slate-100 rounded-md" />
+                      <div className="h-4 w-2/3 bg-slate-200 rounded-md" />
+                      <div className="h-10 bg-slate-100 rounded-xl mt-3" />
+                      <div className="h-10 bg-slate-100 rounded-xl" />
+                      <div className="h-10 bg-slate-100 rounded-xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : filteredExperiences.length === 0 ? (
                 <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center">
                   <Database size={32} className="mx-auto text-slate-300 mb-3" />
                   <h4 className="font-bold text-slate-900 text-base mb-1">검색된 경험 자산이 없습니다</h4>

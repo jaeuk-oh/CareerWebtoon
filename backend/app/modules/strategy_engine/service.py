@@ -49,11 +49,10 @@ class StrategyEngineService:
             context = f"Job Requirements:\\n{json.dumps(jd_analysis.get('requirements', []), ensure_ascii=False)}\\n\\n"
             context += f"Match Results:\\n{json.dumps(matches_data, ensure_ascii=False)}"
 
-            # 2. Call LLM
-            strategy_result = await self.llm.generate_json(
+            # 2. Call LLM (critic model, used for evaluation-style tasks)
+            strategy_result = await self.llm.evaluate_json(
                 prompt=context,
-                system_prompt=STRATEGY_SYSTEM,
-                model_type="critic"
+                system_prompt=STRATEGY_SYSTEM
             )
 
             primary_id = strategy_result.get("primary_experience_id")
@@ -70,13 +69,14 @@ class StrategyEngineService:
             # 3. Save to application_strategies table
             await session.execute(
                 text("""
-                    INSERT INTO application_strategies 
-                    (id, job_id, primary_experience_id, secondary_experience_id, gaps, excluded_reasons, strategy_text)
-                    VALUES (:id, :job_id, :primary_id, :secondary_id, :gaps, :excluded_reasons, :strategy_text)
+                    INSERT INTO application_strategies
+                    (id, job_id, user_id, primary_experience_id, secondary_experience_id, gaps, excluded_reasons, strategy_text)
+                    VALUES (:id, :job_id, :user_id, :primary_id, :secondary_id, :gaps, :excluded_reasons, :strategy_text)
                 """),
                 {
                     "id": strategy_id,
                     "job_id": job_id,
+                    "user_id": user_id,
                     "primary_id": primary_id,
                     "secondary_id": secondary_id,
                     "gaps": json.dumps(gaps),

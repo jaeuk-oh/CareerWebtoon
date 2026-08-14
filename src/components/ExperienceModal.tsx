@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Database, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Database, CheckCircle2, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Experience } from '../types/experience';
 import { useEscapeClose } from '../lib/hooks';
@@ -12,7 +12,7 @@ interface ExperienceModalProps {
 }
 
 export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClose, editingExp }) => {
-  const { addExperience, updateExperience, showToast } = useApp();
+  const { addExperience, updateExperience, decomposeExperience, showToast } = useApp();
 
   const [title, setTitle] = useState('');
   const [organization, setOrganization] = useState('');
@@ -26,6 +26,11 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
 
   const [rawTextNote, setRawTextNote] = useState('');
   const [isAiStructuring, setIsAiStructuring] = useState(false);
+  // Real AI structuring (experience-engine decompose) needs a saved backend row to
+  // work against. We lazily create/update one behind the scenes the first time the
+  // user clicks the AI button, then reuse its id for the rest of this modal session.
+  const [savedExpId, setSavedExpId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (editingExp) {
@@ -38,6 +43,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
       setAction(editingExp.c3p4?.action || '');
       setProduct(editingExp.c3p4?.product || '');
       setEvidenceSource(editingExp.evidenceSource || '');
+      setSavedExpId(editingExp.id);
     } else {
       setTitle('');
       setOrganization('');
@@ -49,6 +55,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
       setProduct('');
       setEvidenceSource('');
       setRawTextNote('');
+      setSavedExpId(null);
     }
   }, [editingExp, isOpen]);
 
@@ -56,26 +63,50 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  const handleAiAutoStructure = () => {
+  const handleAiAutoStructure = async () => {
     if (!rawTextNote.trim() && !description.trim() && !title.trim()) {
       showToast('자유 메모 또는 설명란에 프로젝트 내용을 간단히 적어주세요.', 'warning');
       return;
     }
+    if (!title.trim() || !organization.trim()) {
+      showToast('AI 분석 전에 프로젝트명과 소속 조직을 먼저 입력해주세요.', 'warning');
+      return;
+    }
 
     setIsAiStructuring(true);
-    setTimeout(() => {
+    try {
+      // Real decompose (experience-engine) needs a persisted experience_id, so
+      // silently save/update the record first if it isn't saved yet.
+      let expId = savedExpId;
+      const draft = {
+        title: title.trim(),
+        organization: organization.trim(),
+        period: period.trim(),
+        description: (rawTextNote || description || title).trim(),
+        c3p4: { customer, problem, action, product },
+        metrics: [] as string[],
+        evidenceSource
+      };
+      if (expId) {
+        await updateExperience(expId, draft);
+      } else {
+        const created = await addExperience(draft);
+        expId = created.id;
+        setSavedExpId(expId);
+      }
+
+      await decomposeExperience(expId);
+    } catch (err) {
+      console.error(err);
+      showToast('AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
       setIsAiStructuring(false);
-      const textToAnalyze = rawTextNote || description || title;
-      setCustomer('B2B SaaS 및 실무 운영팀');
-      setProblem('수작업 프로세스로 인한 업무 지연 및 반복 문의 과다 발생');
-      setAction(`${textToAnalyze.slice(0, 30)}... 관련 자동화 룰셋 기획 및 UI/UX 프로세스 개편`);
-      setProduct('처리 소요 시간 70% 단축 및 업무 효율 검증 성과 작성');
-      showToast('AI가 메모를 분석하여 3C4P 구조로 자동 변환했습니다!', 'success');
-    }, 800);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     if (!title.trim() || !organization.trim()) {
       showToast('프로젝트명과 소속 조직은 필수 입력 사항입니다.', 'warning');
       return;
@@ -96,13 +127,20 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
       evidenceSource: evidenceSource.trim() || '기획서 / GA4 보고서 데이터'
     };
 
-    if (editingExp) {
-      updateExperience(editingExp.id, expData);
-    } else {
-      addExperience(expData);
+    setIsSaving(true);
+    try {
+      if (savedExpId) {
+        await updateExperience(savedExpId, expData);
+      } else {
+        await addExperience(expData);
+      }
+      onClose();
+    } catch (err) {
+      console.error(err);
+      showToast('저장에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setIsSaving(false);
     }
-
-    onClose();
   };
 
   return (
@@ -285,16 +323,18 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 취소
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-slate-900 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                disabled={isSaving}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
               >
-                <CheckCircle2 size={16} />
-                <span>{editingExp ? '수정사항 저장' : '경험 자산 저장하기'}</span>
+                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                <span>{isSaving ? '저장 중...' : editingExp ? '수정사항 저장' : '경험 자산 저장하기'}</span>
               </button>
             </div>
           </form>

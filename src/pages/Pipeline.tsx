@@ -33,6 +33,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
 
   const [selectedPrimaryExpId, setSelectedPrimaryExpId] = useState<string>(experiences[0]?.id || '');
   const [selectedSecondaryExpId, setSelectedSecondaryExpId] = useState<string>(experiences[1]?.id || '');
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const SAMPLE_JDS = [
     {
@@ -68,12 +69,17 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
     setStep(2);
   };
 
-  const handleCreateAndNavigate = () => {
-    createPipeline(targetCompany, targetRole, jdText);
+  const handleCreateAndNavigate = async () => {
+    setCreateError(null);
     setStep(4);
-    setTimeout(() => {
+    try {
+      await createPipeline(targetCompany, targetRole, jdText);
       onNavigate('editor');
-    }, 1200);
+    } catch (err) {
+      console.error(err);
+      setCreateError('파이프라인 생성에 실패했습니다. JD 내용을 확인하고 다시 시도해주세요.');
+      showToast('파이프라인 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    }
   };
 
   const stepsList = [
@@ -374,11 +380,30 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
           {/* STEP 4: GENERATING ANIMATION */}
           {step === 4 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
-              <Loader2 className="w-12 h-12 text-slate-900 animate-spin mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-slate-900 mb-1">지원 전략 문서 생성 중...</h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Evidence Validator가 3C4P 앵커 수치 근거의 정합성을 검증하고 있습니다.
-              </p>
+              {createError ? (
+                <>
+                  <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">파이프라인 생성에 실패했습니다</h2>
+                  <p className="text-xs text-slate-500 font-medium mb-5 max-w-sm mx-auto">{createError}</p>
+                  <button
+                    onClick={() => {
+                      setCreateError(null);
+                      setStep(3);
+                    }}
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-xs"
+                  >
+                    다시 시도하기
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Loader2 className="w-12 h-12 text-slate-900 animate-spin mx-auto mb-4" />
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">지원 전략 문서 생성 중...</h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Evidence Validator가 3C4P 앵커 수치 근거의 정합성을 검증하고 있습니다.
+                  </p>
+                </>
+              )}
             </motion.div>
           )}
         </div>
