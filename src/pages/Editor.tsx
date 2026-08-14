@@ -94,7 +94,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const charCount = currentText.length;
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-slate-50 flex flex-col font-sans overflow-y-auto lg:overflow-hidden">
       <NavigationHeader currentView="editor" onNavigate={onNavigate} />
 
       {/* Sub Top Action Toolbar */}
@@ -137,9 +137,9 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Main Split Screen */}
-      <div className="flex-1 flex overflow-hidden p-4 sm:p-6 gap-6 max-w-screen-2xl mx-auto w-full">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden p-4 sm:p-6 gap-4 sm:gap-6 max-w-screen-2xl mx-auto w-full">
         {/* Left Pane: Interactive Editor */}
-        <div className="flex-[3] bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col relative overflow-hidden">
+        <div className="flex-1 lg:flex-[3] min-h-[420px] lg:min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col relative overflow-hidden">
           {/* Doc Switcher Bar */}
           <div className="border-b border-slate-200/80 p-3 flex flex-wrap justify-between items-center bg-slate-50/80 gap-2">
             <div className="flex gap-1.5 bg-slate-200/60 p-1 rounded-xl">
@@ -190,7 +190,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Right Pane: AI Copilot Sidebar */}
-        <div className="w-[360px] lg:w-[400px] flex-none bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col overflow-hidden">
+        <div className="w-full lg:w-[360px] xl:w-[400px] flex-none min-h-[480px] lg:min-h-0 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col overflow-hidden">
           {/* Tab Navigation */}
           <div className="flex border-b border-slate-200 bg-slate-50 p-2 gap-1.5">
             <button

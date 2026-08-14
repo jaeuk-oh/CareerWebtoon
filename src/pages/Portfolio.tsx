@@ -22,6 +22,7 @@ import { useApp } from '../context/AppContext';
 import { NavigationHeader } from '../components/NavigationHeader';
 import { PresentationModal } from '../components/PresentationModal';
 import { PortfolioElement, PortfolioTheme } from '../types/portfolio';
+import { useEscapeClose } from '../lib/hooks';
 
 interface PortfolioViewProps {
   onNavigate: (view: ViewState) => void;
@@ -39,7 +40,8 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
     setPortfolioTheme,
     addSlide,
     deleteSlide,
-    showToast
+    showToast,
+    requestConfirm
   } = useApp();
 
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -48,8 +50,10 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
 
   const currentSlide = portfolioData.slides[currentSlideIndex] || portfolioData.slides[0];
 
+  useEscapeClose(!!editingElement, () => setEditingElement(null));
+
   const handlePublish = () => {
-    showToast('포트폴리오가 정상 발행되었습니다! 공개 URL이 생성되었습니다.', 'success');
+    showToast('포트폴리오 공개 발행 기능은 현재 준비 중입니다. 곧 공개 URL 공유를 지원할 예정입니다.', 'info');
   };
 
   const handleOpenEditElement = (el: PortfolioElement) => {
@@ -66,6 +70,30 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
     setEditingElement(null);
   };
 
+  const handleDeleteSlide = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    requestConfirm({
+      title: '슬라이드를 삭제할까요?',
+      message: `슬라이드 ${idx + 1}과 그 안의 모든 요소가 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
+      confirmLabel: '삭제하기',
+      onConfirm: () => {
+        deleteSlide(idx);
+        if (currentSlideIndex >= portfolioData.slides.length - 1) {
+          setCurrentSlideIndex(Math.max(0, portfolioData.slides.length - 2));
+        }
+      }
+    });
+  };
+
+  const handleDeleteElement = (elementId: string) => {
+    requestConfirm({
+      title: '요소를 삭제할까요?',
+      message: '슬라이드에서 이 요소가 영구적으로 삭제됩니다.',
+      confirmLabel: '삭제하기',
+      onConfirm: () => deletePortfolioElement(currentSlideIndex, elementId)
+    });
+  };
+
   const themes: { id: PortfolioTheme; name: string; colorClass: string }[] = [
     { id: 'navy', name: 'Executive Navy', colorClass: 'bg-slate-900 text-white' },
     { id: 'emerald', name: 'Emerald Tech', colorClass: 'bg-emerald-950 text-white' },
@@ -74,7 +102,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
   ];
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col font-sans overflow-hidden">
+    <div className="h-screen bg-slate-50 flex flex-col font-sans overflow-y-auto lg:overflow-hidden">
       <NavigationHeader currentView="portfolio" onNavigate={onNavigate} />
 
       <PresentationModal
@@ -85,8 +113,16 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
 
       {/* Inline Element Edit Modal */}
       {editingElement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs"
+          onClick={() => setEditingElement(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white border border-slate-200 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4"
+          >
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Edit3 size={18} className="text-emerald-600" />
               <span>포트폴리오 요소 수정</span>
@@ -172,9 +208,9 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
         {/* Left Sidebar: Slide Navigation & AI Guide */}
-        <aside className="w-80 bg-white border-r border-slate-200 flex flex-col z-10 flex-shrink-0">
+        <aside className="w-full lg:w-80 bg-white border-r border-slate-200 flex flex-col z-10 flex-shrink-0 max-h-[45vh] lg:max-h-none">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold">
               <Bot size={16} />
@@ -210,13 +246,8 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
                     <span className="truncate max-w-[190px]">슬라이드 {idx + 1}: {s.title}</span>
                     {portfolioData.slides.length > 1 && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteSlide(idx);
-                          if (currentSlideIndex >= portfolioData.slides.length - 1) {
-                            setCurrentSlideIndex(Math.max(0, portfolioData.slides.length - 2));
-                          }
-                        }}
+                        onClick={(e) => handleDeleteSlide(idx, e)}
+                        aria-label={`슬라이드 ${idx + 1} 삭제`}
                         className="text-slate-400 hover:text-rose-400 p-1"
                       >
                         <Trash2 size={13} />
@@ -303,6 +334,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
                           onClick={() => movePortfolioElement(currentSlideIndex, el.id, 'up')}
                           disabled={elIdx === 0}
                           className="text-slate-400 hover:text-slate-900 disabled:opacity-30 p-1"
+                          aria-label="요소 위로 이동"
                           title="위로 이동"
                         >
                           <ArrowUp size={13} />
@@ -311,6 +343,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
                           onClick={() => movePortfolioElement(currentSlideIndex, el.id, 'down')}
                           disabled={elIdx === currentSlide.elements.length - 1}
                           className="text-slate-400 hover:text-slate-900 disabled:opacity-30 p-1"
+                          aria-label="요소 아래로 이동"
                           title="아래로 이동"
                         >
                           <ArrowDown size={13} />
@@ -318,13 +351,15 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
                         <button
                           onClick={() => handleOpenEditElement(el)}
                           className="text-slate-400 hover:text-slate-900 p-1"
+                          aria-label="요소 편집"
                           title="편집"
                         >
                           <Edit3 size={13} />
                         </button>
                         <button
-                          onClick={() => deletePortfolioElement(currentSlideIndex, el.id)}
+                          onClick={() => handleDeleteElement(el.id)}
                           className="text-slate-300 hover:text-rose-600 p-1"
+                          aria-label="요소 삭제"
                           title="삭제"
                         >
                           <Trash2 size={13} />
@@ -370,7 +405,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({ onNavigate }) => {
         </main>
 
         {/* Right Sidebar: Palette */}
-        <aside className="w-60 bg-white border-l border-slate-200 flex flex-col z-10 flex-shrink-0">
+        <aside className="w-full lg:w-60 bg-white border-l border-slate-200 flex flex-col z-10 flex-shrink-0">
           <div className="p-4 border-b border-slate-200">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">요소 추가</h3>
           </div>

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Share2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PortfolioData } from '../types/portfolio';
+import { useEscapeClose } from '../lib/hooks';
 
 interface PresentationModalProps {
   isOpen: boolean;
@@ -11,10 +12,22 @@ interface PresentationModalProps {
 
 export const PresentationModal: React.FC<PresentationModalProps> = ({ isOpen, onClose, portfolioData }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const slides = portfolioData.slides || [];
+
+  useEscapeClose(isOpen, onClose);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') setCurrentIndex((prev) => Math.min(slides.length - 1, prev + 1));
+      if (e.key === 'ArrowLeft') setCurrentIndex((prev) => Math.max(0, prev - 1));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, slides.length]);
 
   if (!isOpen) return null;
 
-  const slides = portfolioData.slides || [];
   const currentSlide = slides[currentIndex] || slides[0];
 
   const themeClasses = {
@@ -43,6 +56,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({ isOpen, on
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
+              aria-label="발표 모드 닫기"
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
               title="닫기 (Esc)"
             >
@@ -103,6 +117,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({ isOpen, on
             <button
               disabled={currentIndex === 0}
               onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+              aria-label="이전 슬라이드"
               className="p-3 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded-2xl text-white transition-all"
             >
               <ChevronLeft size={20} />
@@ -110,6 +125,7 @@ export const PresentationModal: React.FC<PresentationModalProps> = ({ isOpen, on
             <button
               disabled={currentIndex === slides.length - 1}
               onClick={() => setCurrentIndex((prev) => Math.min(slides.length - 1, prev + 1))}
+              aria-label="다음 슬라이드"
               className="p-3 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded-2xl text-white transition-all"
             >
               <ChevronRight size={20} />

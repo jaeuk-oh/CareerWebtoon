@@ -9,16 +9,19 @@ import EditorView from './pages/Editor';
 import PortfolioView from './pages/Portfolio';
 import { AppProvider } from './context/AppContext';
 import { ToastContainer } from './components/ToastContainer';
+import { ConfirmDialog } from './components/ConfirmDialog';
 
 const LoadingOverlay = ({ message = '불러오는 중...' }: { message?: string }) => (
   <motion.div
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
+    role="status"
+    aria-live="polite"
     className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center"
   >
-    <Loader2 className="w-12 h-12 text-[#002045] animate-spin mb-4" />
-    <p className="text-[#002045] font-medium animate-pulse">{message}</p>
+    <Loader2 className="w-12 h-12 text-slate-900 animate-spin mb-4" />
+    <p className="text-slate-900 font-medium animate-pulse">{message}</p>
   </motion.div>
 );
 
@@ -54,6 +57,7 @@ function AppContent() {
       {currentView === 'portfolio' && <PortfolioView onNavigate={handleNavigate} />}
 
       <ToastContainer />
+      <ConfirmDialog />
     </>
   );
 }

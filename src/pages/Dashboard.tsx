@@ -36,7 +36,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     deletePipeline,
     setActivePipelineId,
     loadDemoData,
-    clearAllData
+    clearAllData,
+    requestConfirm
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'vault' | 'history'>('dashboard');
@@ -58,6 +59,35 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const handleOpenPipeline = (pipelineId: string) => {
     setActivePipelineId(pipelineId);
     onNavigate('editor');
+  };
+
+  const handleDeletePipeline = (id: string, companyName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    requestConfirm({
+      title: '파이프라인을 삭제할까요?',
+      message: `'${companyName}' 지원 파이프라인과 연결된 문서 작업 내역이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
+      confirmLabel: '삭제하기',
+      onConfirm: () => deletePipeline(id)
+    });
+  };
+
+  const handleDeleteExperience = (id: string, title: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    requestConfirm({
+      title: '경험 자산을 삭제할까요?',
+      message: `'${title}' 3C4P 경험 자산이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
+      confirmLabel: '삭제하기',
+      onConfirm: () => deleteExperience(id)
+    });
+  };
+
+  const handleClearAllData = () => {
+    requestConfirm({
+      title: '모든 데이터를 초기화할까요?',
+      message: '경험 자산, 지원 파이프라인, 작성 중인 문서를 포함한 모든 데이터가 영구적으로 삭제됩니다.',
+      confirmLabel: '전체 초기화',
+      onConfirm: clearAllData
+    });
   };
 
   const filteredExperiences = experiences.filter((exp) => {
@@ -162,7 +192,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 데모 로드
               </button>
               <button
-                onClick={clearAllData}
+                onClick={handleClearAllData}
                 className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors"
               >
                 초기화
@@ -308,11 +338,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                               <ShieldCheck size={14} className="text-emerald-600" /> 매칭률 {p.matchScore}%
                             </span>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deletePipeline(p.id);
-                              }}
+                              onClick={(e) => handleDeletePipeline(p.id, p.targetCompany, e)}
                               className="text-slate-300 hover:text-rose-600 p-1 rounded-lg transition-colors"
+                              aria-label={`${p.targetCompany} 파이프라인 삭제`}
                               title="파이프라인 삭제"
                             >
                               <Trash2 size={16} />
@@ -399,7 +427,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="경험 제목, 조직, 3C4P 키워드 또는 수치로 검색..."
-                  className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 shadow-xs"
+                  aria-label="경험 자산 검색"
+                  className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 shadow-xs"
                 />
               </div>
 
@@ -437,16 +466,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                             <button
                               onClick={(e) => handleOpenEditExp(exp, e)}
                               className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition-colors"
+                              aria-label={`${exp.title} 수정`}
                               title="수정"
                             >
                               <Edit3 size={15} />
                             </button>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteExperience(exp.id);
-                              }}
+                              onClick={(e) => handleDeleteExperience(exp.id, exp.title, e)}
                               className="text-slate-300 hover:text-rose-600 p-1.5 rounded-lg transition-colors"
+                              aria-label={`${exp.title} 삭제`}
                               title="삭제"
                             >
                               <Trash2 size={15} />

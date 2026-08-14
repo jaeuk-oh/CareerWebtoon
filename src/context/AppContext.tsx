@@ -16,6 +16,13 @@ export interface ToastMessage {
   message: string;
 }
 
+export interface ConfirmDialogState {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+}
+
 interface AppContextType {
   user: UserProfile;
   login: (name: string, targetRole: string) => void;
@@ -53,6 +60,10 @@ interface AppContextType {
   toasts: ToastMessage[];
   showToast: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
   removeToast: (id: string) => void;
+
+  confirmDialog: ConfirmDialogState | null;
+  requestConfirm: (state: ConfirmDialogState) => void;
+  closeConfirm: () => void;
 
   loadDemoData: () => void;
   clearAllData: () => void;
@@ -220,6 +231,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+
+  const requestConfirm = (state: ConfirmDialogState) => setConfirmDialog(state);
+  const closeConfirm = () => setConfirmDialog(null);
 
   // Sync state to local storage
   useEffect(() => {
@@ -610,6 +625,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toasts,
         showToast,
         removeToast,
+        confirmDialog,
+        requestConfirm,
+        closeConfirm,
         loadDemoData,
         clearAllData
       }}

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { X, Database, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Experience } from '../types/experience';
+import { useEscapeClose } from '../lib/hooks';
 
 interface ExperienceModalProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
       setRawTextNote('');
     }
   }, [editingExp, isOpen]);
+
+  useEscapeClose(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -104,15 +107,23 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs overflow-y-auto">
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs overflow-y-auto"
+        onClick={onClose}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.96 }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="experience-modal-title"
+          onClick={(e) => e.stopPropagation()}
           className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 md:p-8 relative my-8"
         >
           <button
             onClick={onClose}
+            aria-label="닫기"
             className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
           >
             <X size={20} />
@@ -123,7 +134,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
               <Database size={22} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h2 id="experience-modal-title" className="text-xl font-bold text-slate-900 tracking-tight">
                 {editingExp ? '3C4P 경험 자산 수정' : '새 3C4P 경험 자산 등록'}
               </h2>
               <p className="text-xs text-slate-500 font-medium">
@@ -136,7 +147,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
           <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200/80 rounded-2xl">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Sparkles size={15} className="text-emerald-600 animate-spin" />
+                <Sparkles size={15} className={`text-emerald-600 ${isAiStructuring ? 'animate-spin' : ''}`} />
                 AI 3C4P 자동 구조화 어시스턴트
               </span>
               <button
