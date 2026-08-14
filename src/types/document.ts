@@ -16,6 +16,8 @@ export interface DocumentDraft {
   careerText: string;
   defenseScore: number;
   updatedAt: string;
+  // Backend generated_documents.id per doc type, once a real AI draft has been generated for it.
+  generatedDocIds?: Partial<Record<'resume' | 'career' | 'coverLetter', string>>;
 }
 
 export interface DefenseChatMessage {

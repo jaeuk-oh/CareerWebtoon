@@ -96,24 +96,10 @@ class ExperienceEngineService:
                 "is_quantitative": ev.get("is_quantitative", False)
             })
             
-        insert_metrics_query = text("""
-            INSERT INTO metrics (id, experience_id, claim, metric_type, before_value, after_value, unit, raw_number)
-            VALUES (:id, :exp_id, :claim, :metric_type, :before_value, :after_value, :unit, :raw_number)
-        """)
-        metrics_list = evidence_res.get("metrics", [])
-        for met in metrics_list:
-            met_id = str(uuid.uuid4())
-            await self.db.execute(insert_metrics_query, {
-                "id": met_id,
-                "exp_id": experience_id,
-                "claim": met.get("claim"),
-                "metric_type": met.get("metric_type", "INPUT"),
-                "before_value": met.get("before_value"),
-                "after_value": met.get("after_value"),
-                "unit": met.get("unit"),
-                "raw_number": met.get("raw_number", True)
-            })
-            
+        # Note: metrics are linked to a specific evidence row (metrics.evidence_id is NOT NULL),
+        # but the LLM's metrics extraction isn't tied to a particular evidence item, so there's
+        # no reliable evidence_id to attach here. Skipping persistence rather than guessing a link.
+
         # Insert Anchors
         anchor_items = []
         insert_anchor_query = text("""

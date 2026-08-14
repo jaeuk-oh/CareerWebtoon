@@ -3,6 +3,59 @@ import { Experience } from '../types/experience';
 import { JobPipeline } from '../types/job';
 import { DocumentDraft, DefenseChatMessage } from '../types/document';
 import { PortfolioData, PortfolioElement, PortfolioTheme } from '../types/portfolio';
+import { ensureSession, getUserId, supabase } from '../lib/supabase';
+import {
+  api,
+  BackendExperience,
+  FrontendDocType,
+  ValidationResponse
+} from '../lib/api';
+
+const ANNOTATIONS_KEY = 'careercraft_exp_annotations';
+
+// The backend's `experiences` table only stores title/company/role/period/description/skills.
+// The richer C3P4/metrics/evidenceSource quick-fields the UI collects have no backend column
+// (they're meant to come from the AI decompose step instead), so we keep them as a local
+// annotation layered on top of the real, persisted experience record.
+type ExperienceAnnotation = Pick<Experience, 'c3p4' | 'metrics' | 'evidenceSource'>;
+
+const EMPTY_ANNOTATION: ExperienceAnnotation = {
+  c3p4: { customer: '', problem: '', action: '', product: '' },
+  metrics: [],
+  evidenceSource: ''
+};
+
+const loadAnnotations = (): Record<string, ExperienceAnnotation> => {
+  try {
+    return JSON.parse(localStorage.getItem(ANNOTATIONS_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const saveAnnotation = (id: string, data: ExperienceAnnotation) => {
+  const all = loadAnnotations();
+  all[id] = data;
+  localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(all));
+};
+
+const removeAnnotation = (id: string) => {
+  const all = loadAnnotations();
+  delete all[id];
+  localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(all));
+};
+
+const mergeExperience = (be: BackendExperience, annotations: Record<string, ExperienceAnnotation>): Experience => ({
+  id: be.id,
+  userId: be.user_id,
+  title: be.title,
+  organization: be.company || '',
+  period: be.period || '',
+  description: be.description || '',
+  ...(annotations[be.id] || EMPTY_ANNOTATION),
+  createdAt: be.created_at || new Date().toISOString(),
+  updatedAt: be.updated_at
+});
 
 interface UserProfile {
   name: string;
@@ -29,22 +82,28 @@ interface AppContextType {
   logout: () => void;
   
   experiences: Experience[];
-  addExperience: (exp: Omit<Experience, 'id' | 'createdAt'>) => void;
-  updateExperience: (id: string, exp: Partial<Experience>) => void;
+  experiencesLoading: boolean;
+  addExperience: (exp: Omit<Experience, 'id' | 'createdAt'>) => Promise<Experience>;
+  updateExperience: (id: string, exp: Partial<Experience>) => Promise<void>;
   deleteExperience: (id: string) => void;
-  
+  decomposeExperience: (id: string) => Promise<void>;
+
   pipelines: JobPipeline[];
   activePipelineId: string | null;
   setActivePipelineId: (id: string | null) => void;
-  createPipeline: (targetCompany: string, targetRole: string, jdText: string) => JobPipeline;
+  createPipeline: (targetCompany: string, targetRole: string, jdText: string) => Promise<JobPipeline>;
   deletePipeline: (id: string) => void;
 
   documentDraft: DocumentDraft;
   updateDocumentContent: (docType: 'resume' | 'career' | 'coverLetter', text: string) => void;
-  applyEvidenceFix: (originalText: string, fixText: string) => void;
+  generateDocument: (docType: FrontendDocType) => Promise<void>;
+
+  evidenceValidation: ValidationResponse | null;
+  runEvidenceValidation: (docType: FrontendDocType) => Promise<void>;
 
   defenseMessages: DefenseChatMessage[];
   sendDefenseMessage: (text: string) => void;
+  runDefenseGeneration: (docType: FrontendDocType) => Promise<void>;
 
   portfolioData: PortfolioData;
   updatePortfolioTitle: (name: string, role: string) => void;
@@ -232,9 +291,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [experiencesLoading, setExperiencesLoading] = useState(true);
+  const [evidenceValidation, setEvidenceValidation] = useState<ValidationResponse | null>(null);
 
   const requestConfirm = (state: ConfirmDialogState) => setConfirmDialog(state);
   const closeConfirm = () => setConfirmDialog(null);
+
+  // Establish a real Supabase session (anonymous auth) and load the candidate's
+  // actual saved experiences from the backend, replacing the local demo data.
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureSession();
+        const backendExperiences = await api.experiences.list();
+        const annotations = loadAnnotations();
+        setExperiences(backendExperiences.map((be) => mergeExperience(be, annotations)));
+      } catch (err) {
+        console.error('Failed to load experiences from backend', err);
+        showToast('경험 자산을 서버에서 불러오지 못했습니다. 백엔드 연결을 확인해주세요.', 'warning');
+      } finally {
+        setExperiencesLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Sync state to local storage
   useEffect(() => {
@@ -280,9 +360,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Auth Action
-  const login = (name: string, targetRole: string) => {
+  const login = async (name: string, targetRole: string) => {
     setUser({ name, targetRole, isLoggedIn: true });
     setPortfolioData((prev) => ({ ...prev, candidateName: name, targetRole }));
+    try {
+      await ensureSession();
+      const uid = await getUserId();
+      if (uid) {
+        await supabase.from('profiles').upsert({ id: uid, display_name: name });
+      }
+    } catch (err) {
+      console.error('Failed to sync profile to backend', err);
+    }
     showToast(`${name}님 환영합니다! 프로필이 업데이트되었습니다.`, 'success');
   };
 
@@ -292,41 +381,97 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Experiences Action
-  const addExperience = (data: Omit<Experience, 'id' | 'createdAt'>) => {
-    const newExp: Experience = {
-      ...data,
-      id: 'exp-' + Date.now(),
-      createdAt: new Date().toISOString()
-    };
+  const addExperience = async (data: Omit<Experience, 'id' | 'createdAt'>): Promise<Experience> => {
+    const be = await api.experiences.create({
+      title: data.title,
+      company: data.organization,
+      period: data.period,
+      description: data.description
+    });
+    saveAnnotation(be.id, { c3p4: data.c3p4, metrics: data.metrics, evidenceSource: data.evidenceSource || '' });
+    const newExp = mergeExperience(be, loadAnnotations());
     setExperiences((prev) => [newExp, ...prev]);
     showToast('새 3C4P 경험 자산이 등록되었습니다.', 'success');
+    return newExp;
   };
 
-  const updateExperience = (id: string, data: Partial<Experience>) => {
+  const updateExperience = async (id: string, data: Partial<Experience>) => {
+    await api.experiences.update(id, {
+      title: data.title,
+      company: data.organization,
+      period: data.period,
+      description: data.description
+    });
+    if (data.c3p4 || data.metrics || data.evidenceSource !== undefined) {
+      const existing = experiences.find((e) => e.id === id);
+      saveAnnotation(id, {
+        c3p4: data.c3p4 || existing?.c3p4 || EMPTY_ANNOTATION.c3p4,
+        metrics: data.metrics || existing?.metrics || [],
+        evidenceSource: data.evidenceSource ?? existing?.evidenceSource ?? ''
+      });
+    }
     setExperiences((prev) =>
       prev.map((e) => (e.id === id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e))
     );
     showToast('경험 자산이 정상 수정되었습니다.', 'success');
   };
 
-  const deleteExperience = (id: string) => {
+  const deleteExperience = async (id: string) => {
     setExperiences((prev) => prev.filter((e) => e.id !== id));
-    showToast('경험 자산이 삭제되었습니다.', 'info');
+    removeAnnotation(id);
+    try {
+      await api.experiences.delete(id);
+      showToast('경험 자산이 삭제되었습니다.', 'info');
+    } catch (err) {
+      console.error('Failed to delete experience on backend', err);
+      showToast('서버에서 삭제하지 못했습니다. 다시 시도해주세요.', 'error');
+    }
+  };
+
+  // Runs the real AI 3C4P decomposition (experience-engine) and folds the result back
+  // into the same customer/problem/action/product quick-fields the UI already renders.
+  const decomposeExperience = async (id: string) => {
+    const result = await api.experienceEngine.decompose(id);
+    const c = result.three_c_four_p;
+    const quantitative = result.evidence.filter((e) => e.is_quantitative);
+    const annotation: ExperienceAnnotation = {
+      c3p4: {
+        customer: [c.customer?.target, c.customer?.problem, c.customer?.needs].filter(Boolean).join(' / '),
+        problem: c.company_context?.situation || c.customer?.problem || '',
+        action: (c.place?.actual_actions || []).join(', '),
+        product: [...(c.product?.results || []), ...(c.product?.deliverables || [])].join(', ')
+      },
+      metrics: quantitative.length > 0
+        ? quantitative.map((e) => `${e.claim}${e.evidence_text ? ` (${e.evidence_text})` : ''}`)
+        : result.evidence.map((e) => e.claim),
+      evidenceSource: result.anchors.map((a) => a.summary).filter(Boolean).join(' / ')
+    };
+    saveAnnotation(id, annotation);
+    setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation } : e)));
+    showToast('AI가 경험을 분석하여 3C4P 구조로 자동 변환했습니다!', 'success');
   };
 
   // Pipelines Action
-  const createPipeline = (targetCompany: string, targetRole: string, jdText: string): JobPipeline => {
+  const createPipeline = async (targetCompany: string, targetRole: string, jdText: string): Promise<JobPipeline> => {
+    const jd = await api.jobs.analyze({
+      company_name: targetCompany || undefined,
+      position: targetRole || undefined,
+      jd_raw_text: jdText
+    });
+    const match = await api.matching.match(jd.id);
+    const strategy = await api.strategy.generate(jd.id);
+
     const newPipeline: JobPipeline = {
-      id: 'pipe-' + Date.now(),
-      targetCompany: targetCompany || '새 지원 기업',
-      targetRole: targetRole || '직무 미정',
+      id: jd.id,
+      targetCompany: targetCompany || jd.company_name || '새 지원 기업',
+      targetRole: targetRole || jd.position || '직무 미정',
       jdText,
       status: 'strategy',
-      matchScore: experiences.length > 0 ? Math.min(96, 78 + experiences.length * 4) : 85,
-      extractedKeywords: ['콘텐츠 기획', '데이터 분석', '문제 해결', '3C4P 앵커링'],
-      primaryStrategy: `${experiences[0]?.title || '주요 역량 프로젝트'}를 대표 경험으로 1번 문항 배치`,
-      secondaryStrategy: `${experiences[1]?.title || '보조 역량 프로젝트'}를 수치 검증 보조로 사용`,
-      excludedProjects: ['단순 잡무 경험'],
+      matchScore: Math.round((match.coverage_score || 0) * 100),
+      extractedKeywords: jd.culture_keywords,
+      primaryStrategy: strategy.strategy_text,
+      secondaryStrategy: strategy.gaps.map((g) => g.suggestion).join(' '),
+      excludedProjects: strategy.excluded_reasons.map((r) => r.reason),
       createdAt: new Date().toISOString()
     };
 
@@ -336,10 +481,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newPipeline;
   };
 
-  const deletePipeline = (id: string) => {
+  const deletePipeline = async (id: string) => {
     setPipelines((prev) => prev.filter((p) => p.id !== id));
     if (activePipelineId === id) setActivePipelineId(null);
-    showToast('파이프라인이 삭제되었습니다.', 'info');
+    try {
+      await api.jobs.delete(id);
+      showToast('파이프라인이 삭제되었습니다.', 'info');
+    } catch (err) {
+      console.error('Failed to delete job on backend', err);
+      showToast('서버에서 삭제하지 못했습니다. 다시 시도해주세요.', 'error');
+    }
   };
 
   // Document Editor Actions
@@ -354,25 +505,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }));
   };
 
-  const applyEvidenceFix = (originalText: string, fixText: string) => {
-    setDocumentDraft((prev) => {
-      let updatedCover = prev.coverLetterText.replace(originalText, fixText);
-      let updatedCareer = prev.careerText.replace(originalText, fixText);
-      let updatedResume = prev.resumeText.replace(originalText, fixText);
-
-      return {
-        ...prev,
-        coverLetterText: updatedCover,
-        careerText: updatedCareer,
-        resumeText: updatedResume,
-        defenseScore: Math.min(100, (prev.defenseScore || 87) + 5),
-        updatedAt: new Date().toISOString()
-      };
-    });
-    showToast('AI 수정안이 반영되었습니다. 방어점수가 +5 상승했습니다!', 'success');
+  // Calls document-engine to write a real AI draft for the active pipeline's job,
+  // and remembers its generated_documents.id so evidence validation / defense
+  // question generation (which both key off that id) can be run afterwards.
+  const generateDocument = async (docType: FrontendDocType) => {
+    if (!activePipelineId) {
+      showToast('먼저 지원 파이프라인을 생성하거나 선택해주세요.', 'warning');
+      return;
+    }
+    const doc = await api.documents.generate(activePipelineId, docType);
+    setDocumentDraft((prev) => ({
+      ...prev,
+      docType,
+      coverLetterText: docType === 'coverLetter' ? doc.content : prev.coverLetterText,
+      resumeText: docType === 'resume' ? doc.content : prev.resumeText,
+      careerText: docType === 'career' ? doc.content : prev.careerText,
+      generatedDocIds: { ...prev.generatedDocIds, [docType]: doc.id },
+      updatedAt: new Date().toISOString()
+    }));
+    setEvidenceValidation(null);
+    showToast('AI가 지원서 초안을 생성했습니다.', 'success');
   };
 
-  // Defense Mock Interview Action
+  const runEvidenceValidation = async (docType: FrontendDocType) => {
+    const docId = documentDraft.generatedDocIds?.[docType];
+    if (!docId) {
+      showToast('먼저 "AI 초안 생성"으로 문서를 만들어야 수치 검증을 실행할 수 있습니다.', 'warning');
+      return;
+    }
+    const result = await api.validation.validate(docId);
+    setEvidenceValidation(result);
+    setDocumentDraft((prev) => ({
+      ...prev,
+      defenseScore: Math.round(result.overall_score * 100),
+      updatedAt: new Date().toISOString()
+    }));
+    showToast('수치 검증이 완료되었습니다.', 'success');
+  };
+
+  // Defense Mock Interview Action.
+  // Note: the backend has no "grade this answer" endpoint, only "generate pressure
+  // questions from flagged claims" (see runDefenseGeneration below). So the opening
+  // questions are real AI output, but replies to the user's free-text answers here
+  // stay a local keyword heuristic — there's no real endpoint to call for that part.
   const sendDefenseMessage = (text: string) => {
     if (!text.trim()) return;
     
@@ -409,6 +584,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         defenseScore: Math.min(100, (prev.defenseScore || 87) + scoreChange)
       }));
     }, 900);
+  };
+
+  // Calls defense-engine to generate real pressure-interview questions from the
+  // document's flagged/weak claims (run evidence validation first for best results),
+  // and seeds the chat with them as the AI's opening questions.
+  const runDefenseGeneration = async (docType: FrontendDocType) => {
+    const docId = documentDraft.generatedDocIds?.[docType];
+    if (!docId) {
+      showToast('먼저 "AI 초안 생성"으로 문서를 만들어야 방어 질문을 생성할 수 있습니다.', 'warning');
+      return;
+    }
+    const result = await api.defense.generate(docId);
+    if (result.questions.length === 0) {
+      showToast('추가로 방어가 필요한 취약 claim이 없습니다. 수치 검증을 먼저 실행해보세요.', 'info');
+      return;
+    }
+    const newMessages: DefenseChatMessage[] = result.questions.map((q) => ({
+      id: 'def-q-' + q.id,
+      sender: 'ai',
+      text: q.question,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }));
+    setDefenseMessages((prev) => [...prev, ...newMessages]);
+    showToast(`AI가 실전 압박 질문 ${result.questions.length}개를 생성했습니다.`, 'success');
   };
 
   // Portfolio Actions
@@ -599,9 +798,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         login,
         logout,
         experiences,
+        experiencesLoading,
         addExperience,
         updateExperience,
         deleteExperience,
+        decomposeExperience,
         pipelines,
         activePipelineId,
         setActivePipelineId,
@@ -609,9 +810,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deletePipeline,
         documentDraft,
         updateDocumentContent,
-        applyEvidenceFix,
+        generateDocument,
+        evidenceValidation,
+        runEvidenceValidation,
         defenseMessages,
         sendDefenseMessage,
+        runDefenseGeneration,
         portfolioData,
         updatePortfolioTitle,
         updateSlideHeader,

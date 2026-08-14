@@ -17,12 +17,20 @@ class EvidenceValidatorService:
         )
         claims = [{"id": r.id, "text": r.claim_text} for r in res_claims.fetchall()]
         
-        # 2. Fetch all user evidence
+        # 2. Fetch all user evidence (evidence rows hang off experiences, which carry user_id)
         res_evidence = await self.db.execute(
-            text("SELECT id, content FROM evidence WHERE user_id = :user_id"),
+            text("""
+            SELECT e.id, e.claim, e.evidence_text
+            FROM evidence e
+            JOIN experiences ex ON ex.id = e.experience_id
+            WHERE ex.user_id = :user_id
+            """),
             {"user_id": user_id}
         )
-        evidence = [{"id": r.id, "content": r.content} for r in res_evidence.fetchall()]
+        evidence = [
+            {"id": r.id, "content": f"{r.claim}: {r.evidence_text or ''}"}
+            for r in res_evidence.fetchall()
+        ]
         
         # 3. Call LLM to validate each claim
         context = {"claims": claims, "evidence": evidence}
