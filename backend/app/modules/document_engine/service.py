@@ -1,6 +1,8 @@
+import json
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from app.core.exceptions import AppException
 from .schemas import GenerateRequest, GeneratedDocResponse
 from .prompts import RESUME_SYSTEM, COVER_LETTER_SYSTEM, CAREER_DESC_SYSTEM, CLAIM_EXTRACT_SYSTEM
 from app.services.llm_gateway import LLMGateway
@@ -30,27 +32,84 @@ class DocumentEngineService:
 
     async def generate_document(self, data: GenerateRequest, user_id: str) -> dict:
         job_id = data.job_id
-        
-        # 1. Fetch strategy, matches, experiences, evidence, 3c4p for this job
+
+        # 1. Fetch job requirements
+        job_res = await self.db.execute(
+            text("SELECT company_name, position, jd_analysis FROM jobs WHERE id = :job_id AND user_id = :user_id"),
+            {"job_id": job_id, "user_id": user_id}
+        )
+        job = job_res.fetchone()
+        if not job:
+            raise AppException(status_code=404, detail="Job not found")
+
+        # 2. Fetch the latest strategy for this job
         res_strategy = await self.db.execute(
-            text("SELECT * FROM application_strategies WHERE job_id = :job_id AND user_id = :user_id"),
+            text("""
+                SELECT primary_experience_id, secondary_experience_id, gap_analysis, strategy_text
+                FROM application_strategies
+                WHERE job_id = :job_id AND user_id = :user_id
+                ORDER BY created_at DESC LIMIT 1
+            """),
             {"job_id": job_id, "user_id": user_id}
         )
         strategy = res_strategy.fetchone()
-        
-        # 2. Build context based on doc_type
-        context = f"Strategy: {strategy}"
+        if not strategy:
+            raise AppException(status_code=404, detail="Strategy not found — run strategy generation first")
+
+        # 3. Fetch full 3C4P + evidence for the primary/secondary experiences the
+        # strategy selected, so the model writes from real, specific material
+        # instead of the raw strategy row (which is all it used to see).
+        exp_ids = [eid for eid in [strategy.primary_experience_id, strategy.secondary_experience_id] if eid]
+        experiences_context = []
+        if exp_ids:
+            exp_res = await self.db.execute(
+                text("SELECT id, title, description FROM experiences WHERE id = ANY(:ids) AND user_id = :user_id"),
+                {"ids": exp_ids, "user_id": user_id}
+            )
+            for exp in exp_res.fetchall():
+                c3p4_res = await self.db.execute(
+                    text("""
+                        SELECT customer, company_context, competitor, place, product, price, promotion
+                        FROM experience_3c4p WHERE experience_id = :exp_id
+                    """),
+                    {"exp_id": exp.id}
+                )
+                c3p4 = c3p4_res.mappings().first()
+                evidence_res = await self.db.execute(
+                    text("SELECT claim, evidence_text, is_quantitative FROM evidence WHERE experience_id = :exp_id"),
+                    {"exp_id": exp.id}
+                )
+                evidence = [dict(e) for e in evidence_res.mappings().all()]
+                experiences_context.append({
+                    "title": exp.title,
+                    "description": exp.description,
+                    "3c4p": dict(c3p4) if c3p4 else None,
+                    "evidence": evidence
+                })
+
+        gap_analysis = strategy.gap_analysis or {}
+        context = json.dumps({
+            "company_name": job.company_name,
+            "position": job.position,
+            "job_requirements": (job.jd_analysis or {}).get("requirements", []),
+            "strategy_text": strategy.strategy_text,
+            "gaps": gap_analysis.get("gaps", []),
+            "experiences": experiences_context
+        }, ensure_ascii=False, default=str)
+
         prompt = RESUME_SYSTEM
         if data.doc_type == "cover_letter":
             prompt = COVER_LETTER_SYSTEM
         elif data.doc_type == "career_desc":
             prompt = CAREER_DESC_SYSTEM
-            
-        # 3. Call LLM (Writer model)
-        generated_content = await self.llm.generate(system_prompt=prompt, prompt=context)
 
-        # 4. Extract claims
-        extraction = await self.llm.generate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, prompt=generated_content)
+        # 4. Call LLM — the Critic model (nemotron-3-super) has proven more reliable
+        # than the Writer model for larger, more complex generations elsewhere in
+        # this app (see defense_engine's question-batch generation).
+        generated_content = await self.llm.analyze(system_prompt=prompt, prompt=context, max_tokens=3072)
+
+        # 5. Extract claims
+        extraction = await self.llm.evaluate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, prompt=generated_content)
         claims = extraction.get("claims", [])
         
         # 5. Save to generated_documents + claims tables

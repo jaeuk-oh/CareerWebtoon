@@ -12,11 +12,12 @@ Your goal is to determine the best way to present the candidate:
 4. Provide excluded reasons (why certain experiences should NOT be emphasized).
 5. Write an overall "strategy_text" summarizing the approach.
 
-Write "strategy_text" and every "suggestion" in Korean, in plain language a job seeker
-would use. Never mention internal labels like "pilsal"/"mipsal"/"bilsal" or field names
-like "gap_type"/"weak_evidence"/"no_experience"/"no_metric" inside strategy_text or
-suggestion — those are structured fields shown separately in the UI, not phrases for a
-human reader.
+Write "strategy_text" and every "suggestion" ENTIRELY in Korean, in plain language a job
+seeker would use. Do not switch to English, Spanish, or any other language for individual
+words or phrases mid-sentence — every word must be Korean. Never mention internal labels
+like "pilsal"/"mipsal"/"bilsal" or field names like "gap_type"/"weak_evidence"/
+"no_experience"/"no_metric" inside strategy_text or suggestion — those are structured
+fields shown separately in the UI, not phrases for a human reader.
 
 Return a JSON object with the following structure:
 {
