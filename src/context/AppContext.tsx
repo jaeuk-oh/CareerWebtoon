@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Experience } from '../types/experience';
 import { JobPipeline } from '../types/job';
 import { DocumentDraft, DefenseChatMessage } from '../types/document';
-import { ensureSession, getUserId, supabase } from '../lib/supabase';
+import { ensureSession, supabase, signInWithGoogle, signOutAndReload } from '../lib/supabase';
 import {
   api,
   BackendExperience,
@@ -61,7 +61,11 @@ const mergeExperience = (be: BackendExperience, annotations: Record<string, Expe
 
 interface UserProfile {
   name: string;
+  email: string | null;
+  avatarUrl: string | null;
   targetRole: string;
+  // True only once the Supabase session is a real (non-anonymous) identity —
+  // i.e. the user has actually signed in with Google, not just opened the app.
   isLoggedIn: boolean;
 }
 
@@ -80,8 +84,9 @@ export interface ConfirmDialogState {
 
 interface AppContextType {
   user: UserProfile;
-  login: (name: string, targetRole: string) => void;
-  logout: () => void;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
+  updateTargetRole: (targetRole: string) => void;
   
   experiences: Experience[];
   experiencesLoading: boolean;
@@ -146,7 +151,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Local Storage Loaders
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('careercraft_user');
-    return saved ? JSON.parse(saved) : { name: '사용자', targetRole: '', isLoggedIn: false };
+    return saved
+      ? JSON.parse(saved)
+      : { name: '사용자', email: null, avatarUrl: null, targetRole: '', isLoggedIn: false };
   });
 
   const [experiences, setExperiences] = useState<Experience[]>(() => {
@@ -181,22 +188,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const requestConfirm = (state: ConfirmDialogState) => setConfirmDialog(state);
   const closeConfirm = () => setConfirmDialog(null);
 
-  // Establish a real Supabase session (anonymous auth) and load the candidate's
-  // actual saved experiences from the backend, replacing the local demo data.
+  // Establish a real Supabase session (anonymous auth, upgraded to Google once the
+  // user signs in) and load the candidate's actual saved experiences from the backend.
   useEffect(() => {
+    let cancelled = false;
+
+    const syncUserFromSession = (session: import('@supabase/supabase-js').Session | null) => {
+      if (cancelled) return;
+      if (session && !session.user.is_anonymous) {
+        const meta = session.user.user_metadata || {};
+        const name = meta.full_name || meta.name || session.user.email || '사용자';
+        setUser((prev) => ({
+          ...prev,
+          name,
+          email: session.user.email ?? null,
+          avatarUrl: meta.avatar_url || meta.picture || null,
+          isLoggedIn: true
+        }));
+        supabase
+          .from('profiles')
+          .upsert({ id: session.user.id, display_name: name, email: session.user.email ?? null })
+          .then(({ error }) => {
+            if (error) console.error('Failed to sync profile to backend', error);
+          });
+      } else {
+        setUser((prev) => ({ ...prev, isLoggedIn: false, email: null, avatarUrl: null }));
+      }
+    };
+
     (async () => {
       try {
         await ensureSession();
+        const { data } = await supabase.auth.getSession();
+        syncUserFromSession(data.session);
         const backendExperiences = await api.experiences.list();
         const annotations = loadAnnotations();
-        setExperiences(backendExperiences.map((be) => mergeExperience(be, annotations)));
+        if (!cancelled) setExperiences(backendExperiences.map((be) => mergeExperience(be, annotations)));
       } catch (err) {
         console.error('Failed to load experiences from backend', err);
         showToast('경험 자산을 서버에서 불러오지 못했습니다. 백엔드 연결을 확인해주세요.', 'warning');
       } finally {
-        setExperiencesLoading(false);
+        if (!cancelled) setExperiencesLoading(false);
       }
     })();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncUserFromSession(session);
+    });
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -239,24 +282,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Auth Action
-  const login = async (name: string, targetRole: string) => {
-    setUser({ name, targetRole, isLoggedIn: true });
+  // Auth Actions — real Supabase/Google auth. loginWithGoogle triggers a redirect;
+  // the actual "logged in" state is picked up by the onAuthStateChange listener
+  // above once the user lands back here.
+  const loginWithGoogle = async () => {
     try {
-      await ensureSession();
-      const uid = await getUserId();
-      if (uid) {
-        await supabase.from('profiles').upsert({ id: uid, display_name: name });
-      }
+      await signInWithGoogle();
     } catch (err) {
-      console.error('Failed to sync profile to backend', err);
+      console.error('Google sign-in failed', err);
+      showToast('Google 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
     }
-    showToast(`${name}님 환영합니다! 프로필이 업데이트되었습니다.`, 'success');
   };
 
-  const logout = () => {
-    setUser((prev) => ({ ...prev, isLoggedIn: false }));
-    showToast('로그아웃되었습니다.', 'info');
+  const logout = async () => {
+    await signOutAndReload();
+  };
+
+  const updateTargetRole = (targetRole: string) => {
+    setUser((prev) => ({ ...prev, targetRole }));
   };
 
   // Experiences Action
@@ -510,7 +553,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const clearAllData = () => {
-    setUser({ name: '사용자', targetRole: '', isLoggedIn: false });
     setExperiences([]);
     setPipelines([]);
     setActivePipelineId(null);
@@ -524,16 +566,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString()
     });
     setDefenseMessages([]);
-    localStorage.clear();
-    showToast('모든 데이터가 초기화되었습니다.', 'info');
+    // Only this app's own cached keys — never the Supabase session key, or a
+    // logged-in Google user would get silently signed out by a local reset.
+    [
+      'careercraft_user',
+      'careercraft_experiences',
+      'careercraft_exp_annotations',
+      'careercraft_pipelines',
+      'careercraft_active_pipeline_id',
+      'careercraft_document',
+      'careercraft_defense_chat'
+    ].forEach((key) => localStorage.removeItem(key));
+    showToast('로컬에 저장된 작업 내역이 초기화되었습니다.', 'info');
   };
 
   return (
     <AppContext.Provider
       value={{
         user,
-        login,
+        loginWithGoogle,
         logout,
+        updateTargetRole,
         experiences,
         experiencesLoading,
         addExperience,
