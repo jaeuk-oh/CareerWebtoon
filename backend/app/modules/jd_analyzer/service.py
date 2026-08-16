@@ -84,7 +84,7 @@ class JDAnalyzerService:
                     "company_name": job.company_name,
                     "position": job.position,
                     "jd_raw_text": job.jd_raw_text,
-                    "jd_analysis": json.loads(job.jd_analysis) if job.jd_analysis else None,
+                    "jd_analysis": job.jd_analysis or None,
                     "created_at": str(job.created_at)
                 }
                 for job in jobs
@@ -106,7 +106,7 @@ class JDAnalyzerService:
                 "company_name": job.company_name,
                 "position": job.position,
                 "jd_raw_text": job.jd_raw_text,
-                "jd_analysis": json.loads(job.jd_analysis) if job.jd_analysis else None,
+                "jd_analysis": job.jd_analysis or None,
                 "created_at": str(job.created_at)
             }
 
