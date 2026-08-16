@@ -85,10 +85,14 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentView,
               onClick={() => setIsLoginOpen(true)}
               className="flex items-center gap-2 text-slate-800 text-xs font-bold bg-slate-100/80 hover:bg-slate-200/80 px-3.5 py-2 rounded-xl border border-slate-200/60 transition-all active:scale-95"
             >
-              <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold">
-                {user.name.slice(0, 1)}
+              <div className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold overflow-hidden">
+                {user.isLoggedIn && user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  user.name.slice(0, 1)
+                )}
               </div>
-              <span className="max-w-[100px] truncate">{user.isLoggedIn ? user.name : '프로필 설정'}</span>
+              <span className="max-w-[100px] truncate">{user.isLoggedIn ? user.name : '로그인'}</span>
             </button>
 
             {/* Mobile Menu Button */}
