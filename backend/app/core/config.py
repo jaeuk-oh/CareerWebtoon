@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ALLOWED_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 @lru_cache
 def get_settings() -> Settings:
