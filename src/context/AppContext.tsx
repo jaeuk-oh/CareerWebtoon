@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Experience } from '../types/experience';
 import { JobPipeline } from '../types/job';
 import { DocumentDraft, DefenseChatMessage } from '../types/document';
@@ -10,7 +10,12 @@ import {
   ValidationResponse,
   JDAnalysisResponse,
   MatchResponse,
-  StrategyResponse
+  StrategyResponse,
+  ThreeCFourP,
+  EvidenceItem,
+  AnchorItem,
+  DocumentListItem,
+  BACKEND_TO_FRONTEND_DOC_TYPE
 } from '../lib/api';
 
 const ANNOTATIONS_KEY = 'careercraft_exp_annotations';
@@ -45,6 +50,30 @@ const removeAnnotation = (id: string) => {
   const all = loadAnnotations();
   delete all[id];
   localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(all));
+};
+
+// Shared by decomposeExperience (fresh AI run) and the on-load backfill (an
+// experience that was already decomposed on a different browser/device, so
+// there's no local annotation cache for it yet) — both turn the same backend
+// 3C4P/evidence/anchor shape into the flat quick-view fields the UI renders.
+const buildAnnotationFromDecompose = (
+  c3p4: ThreeCFourP,
+  evidence: EvidenceItem[],
+  anchors: AnchorItem[]
+): ExperienceAnnotation => {
+  const quantitative = evidence.filter((e) => e.is_quantitative);
+  return {
+    c3p4: {
+      customer: [c3p4.customer?.target, c3p4.customer?.problem, c3p4.customer?.needs].filter(Boolean).join(' / '),
+      problem: c3p4.company_context?.situation || c3p4.customer?.problem || '',
+      action: (c3p4.place?.actual_actions || []).join(', '),
+      product: [...(c3p4.product?.results || []), ...(c3p4.product?.deliverables || [])].join(', ')
+    },
+    metrics: quantitative.length > 0
+      ? quantitative.map((e) => `${e.claim}${e.evidence_text ? ` (${e.evidence_text})` : ''}`)
+      : evidence.map((e) => e.claim),
+    evidenceSource: anchors.map((a) => a.summary).filter(Boolean).join(' / ')
+  };
 };
 
 const mergeExperience = (be: BackendExperience, annotations: Record<string, ExperienceAnnotation>): Experience => ({
@@ -224,11 +253,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const backendExperiences = await api.experiences.list();
         const annotations = loadAnnotations();
         if (!cancelled) setExperiences(backendExperiences.map((be) => mergeExperience(be, annotations)));
+
+        // Experiences already AI-decomposed on a different browser/device have no
+        // local annotation cache here — the real 3C4P/evidence/anchor data is safe
+        // in the backend, so pull it in instead of leaving the card blank.
+        const missingIds = backendExperiences.filter((be) => !annotations[be.id]).map((be) => be.id);
+        missingIds.forEach(async (id) => {
+          try {
+            const c3p4 = await api.experienceEngine.get3c4p(id);
+            if (!c3p4) return;
+            const [evidence, anchors] = await Promise.all([
+              api.experienceEngine.getEvidence(id),
+              api.experienceEngine.getAnchors(id)
+            ]);
+            const annotation = buildAnnotationFromDecompose(c3p4, evidence, anchors);
+            saveAnnotation(id, annotation);
+            if (!cancelled) setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation } : e)));
+          } catch (err) {
+            console.error(`Failed to backfill 3C4P for experience ${id}`, err);
+          }
+        });
       } catch (err) {
         console.error('Failed to load experiences from backend', err);
         showToast('경험 자산을 서버에서 불러오지 못했습니다. 백엔드 연결을 확인해주세요.', 'warning');
       } finally {
         if (!cancelled) setExperiencesLoading(false);
+      }
+    })();
+
+    // Reconstruct "진행 중인 지원" from the backend. This used to live only in
+    // localStorage, so it silently vanished on a new browser/device even though
+    // the underlying job/match/strategy rows were safely saved server-side —
+    // rebuild the same JobPipeline shape finalizePipeline() produces, from the
+    // real data.
+    (async () => {
+      try {
+        const backendJobs = await api.jobs.list();
+        const rebuilt = await Promise.all(
+          backendJobs.map(async (job): Promise<JobPipeline | null> => {
+            let strategy: StrategyResponse;
+            try {
+              strategy = await api.strategy.getStrategy(job.id);
+            } catch {
+              // No strategy yet — this job never made it past step 1/2, matching
+              // finalizePipeline's own rule of only listing a pipeline once a
+              // strategy exists. Skip rather than show a dead-end card.
+              return null;
+            }
+            let coverageScore = 0;
+            try {
+              const matches = await api.matching.getMatches(job.id);
+              coverageScore = matches.coverage_score || 0;
+            } catch {
+              coverageScore = 0;
+            }
+            return {
+              id: job.id,
+              targetCompany: job.company_name || '지원 기업',
+              targetRole: job.position || '직무 미정',
+              jdText: job.jd_raw_text,
+              status: 'strategy',
+              matchScore: Math.round(coverageScore * 100),
+              extractedKeywords: job.jd_analysis?.culture_keywords || [],
+              primaryStrategy: strategy.strategy_text,
+              secondaryStrategy: strategy.gaps.map((g) => g.suggestion).join(' '),
+              excludedProjects: strategy.excluded_reasons.map((r) => r.reason),
+              createdAt: job.created_at
+            };
+          })
+        );
+        if (!cancelled) setPipelines(rebuilt.filter((p): p is JobPipeline => p !== null));
+      } catch (err) {
+        console.error('Failed to load pipelines from backend', err);
       }
     })();
 
@@ -268,6 +364,99 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     localStorage.setItem('careercraft_defense_chat', JSON.stringify(defenseMessages));
   }, [defenseMessages]);
+
+  // Tracks which pipeline's documents are currently reflected in `documentDraft`,
+  // so opening a pipeline (new or from a previous session) loads that job's real
+  // saved content from the backend instead of leaving stale data behind from
+  // whatever pipeline was last active — without this, documentDraft/evidenceValidation/
+  // defenseMessages were single global slots never keyed to a specific job.
+  const loadedPipelineRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!activePipelineId) {
+      if (loadedPipelineRef.current !== null) {
+        loadedPipelineRef.current = null;
+        setDocumentDraft({ ...INITIAL_DOC, id: 'doc-empty' });
+        setEvidenceValidation(null);
+        setDefenseMessages([]);
+      }
+      return;
+    }
+    if (loadedPipelineRef.current === activePipelineId) return;
+    loadedPipelineRef.current = activePipelineId;
+
+    (async () => {
+      try {
+        const docs = await api.documents.list(activePipelineId);
+        if (docs.length === 0) {
+          setDocumentDraft({ ...INITIAL_DOC, id: 'doc-' + activePipelineId, pipelineId: activePipelineId });
+          setEvidenceValidation(null);
+          setDefenseMessages([]);
+          return;
+        }
+
+        const latestByType = new Map<string, DocumentListItem>();
+        for (const d of docs) {
+          const existing = latestByType.get(d.doc_type);
+          if (!existing || d.version > existing.version) latestByType.set(d.doc_type, d);
+        }
+
+        const draft: DocumentDraft = { ...INITIAL_DOC, pipelineId: activePipelineId, generatedDocIds: {} };
+        let mostRecent: { docId: string; createdAt: string } | null = null;
+
+        for (const meta of latestByType.values()) {
+          const full = await api.documents.get(meta.id);
+          const feType = BACKEND_TO_FRONTEND_DOC_TYPE[meta.doc_type];
+          if (!feType) continue;
+          if (feType === 'coverLetter') draft.coverLetterText = full.content;
+          if (feType === 'resume') draft.resumeText = full.content;
+          if (feType === 'career') draft.careerText = full.content;
+          draft.generatedDocIds![feType] = full.id;
+          draft.docType = feType;
+          if (!mostRecent || meta.created_at > mostRecent.createdAt) {
+            mostRecent = { docId: full.id, createdAt: meta.created_at };
+          }
+        }
+
+        if (mostRecent) {
+          try {
+            const validation = await api.validation.get(mostRecent.docId);
+            if (validation.total_claims > 0) {
+              draft.defenseScore = Math.round(validation.overall_score * 100);
+              setEvidenceValidation(validation);
+            } else {
+              setEvidenceValidation(null);
+            }
+          } catch {
+            setEvidenceValidation(null);
+          }
+
+          try {
+            const defense = await api.defense.get(mostRecent.docId);
+            setDefenseMessages(
+              defense.questions.map((q) => ({
+                id: 'def-q-' + q.id,
+                sender: 'ai',
+                text: q.question,
+                timestamp: '',
+                claimText: q.claim_text,
+                expectedAnswerHint: q.expected_answer_hint
+              }))
+            );
+          } catch {
+            setDefenseMessages([]);
+          }
+        } else {
+          setEvidenceValidation(null);
+          setDefenseMessages([]);
+        }
+
+        setDocumentDraft(draft);
+      } catch (err) {
+        console.error('Failed to load saved documents for this pipeline', err);
+      }
+    })();
+  }, [activePipelineId]);
 
   // Toast System
   const showToast = (message: string, type: 'success' | 'info' | 'warning' | 'error' = 'info') => {
@@ -354,20 +543,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // into the same customer/problem/action/product quick-fields the UI already renders.
   const decomposeExperience = async (id: string) => {
     const result = await api.experienceEngine.decompose(id);
-    const c = result.three_c_four_p;
-    const quantitative = result.evidence.filter((e) => e.is_quantitative);
-    const annotation: ExperienceAnnotation = {
-      c3p4: {
-        customer: [c.customer?.target, c.customer?.problem, c.customer?.needs].filter(Boolean).join(' / '),
-        problem: c.company_context?.situation || c.customer?.problem || '',
-        action: (c.place?.actual_actions || []).join(', '),
-        product: [...(c.product?.results || []), ...(c.product?.deliverables || [])].join(', ')
-      },
-      metrics: quantitative.length > 0
-        ? quantitative.map((e) => `${e.claim}${e.evidence_text ? ` (${e.evidence_text})` : ''}`)
-        : result.evidence.map((e) => e.claim),
-      evidenceSource: result.anchors.map((a) => a.summary).filter(Boolean).join(' / ')
-    };
+    const annotation = buildAnnotationFromDecompose(result.three_c_four_p, result.evidence, result.anchors);
     saveAnnotation(id, annotation);
     setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation } : e)));
     showToast('AI가 경험을 분석하여 3C4P 구조로 자동 변환했습니다!', 'success');

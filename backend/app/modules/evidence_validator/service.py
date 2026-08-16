@@ -106,5 +106,53 @@ class EvidenceValidatorService:
         }
 
     async def get_validation(self, generated_document_id: str, user_id: str) -> dict:
-        # Simple fetch logic for existing validation
-        return {"document_id": generated_document_id} # Placeholder
+        # Reconstructs the last validation result from the claims table itself
+        # (status/defense_score are persisted there by validate()) rather than
+        # requiring a fresh LLM call — lets a returning session resume a
+        # document's validation state without re-running it.
+        doc_check = await self.db.execute(
+            text("SELECT 1 FROM generated_documents WHERE id = :doc_id AND user_id = :user_id"),
+            {"doc_id": generated_document_id, "user_id": user_id}
+        )
+        if not doc_check.first():
+            raise ValueError("Document not found or not owned by user")
+
+        res_claims = await self.db.execute(
+            text("SELECT id, claim_text, status, defense_score FROM claims WHERE generated_document_id = :doc_id"),
+            {"doc_id": generated_document_id}
+        )
+        rows = res_claims.fetchall()
+
+        verified = flagged = unverified = 0
+        total_score = 0.0
+        response_claims = []
+
+        for r in rows:
+            status = _normalize_claim_status(r.status)
+            score = r.defense_score or 0.0
+            if status == "VERIFIED": verified += 1
+            elif status == "FLAGGED": flagged += 1
+            else: unverified += 1
+            total_score += score
+            response_claims.append({
+                "claim_id": r.id,
+                "claim_text": r.claim_text,
+                "status": status,
+                "evidence_text": None,
+                "defense_score": score,
+                "issues": []
+            })
+
+        total = len(rows)
+        overall_score = total_score / total if total > 0 else 0.0
+
+        return {
+            "document_id": generated_document_id,
+            "total_claims": total,
+            "verified": verified,
+            "flagged": flagged,
+            "unverified": unverified,
+            "overall_score": overall_score,
+            "claims": response_claims,
+            "message": "Validation retrieved successfully." if total > 0 else "No validation has been run yet."
+        }

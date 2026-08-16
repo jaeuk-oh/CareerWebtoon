@@ -37,4 +37,7 @@ async def get_defense(
     db: AsyncSession = Depends(get_db)
 ):
     service = DefenseEngineService(db)
-    return await service.get_defense(document_id, current_user["sub"])
+    try:
+        return await service.get_defense(document_id, current_user["sub"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

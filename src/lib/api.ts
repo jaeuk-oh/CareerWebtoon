@@ -110,6 +110,16 @@ export interface JDAnalysisResponse {
   message: string;
 }
 
+export interface JobResponse {
+  id: string;
+  user_id: string;
+  company_name?: string | null;
+  position?: string | null;
+  jd_raw_text: string;
+  jd_analysis?: { requirements?: JobRequirementItem[]; hidden_requirements?: JobRequirementItem[]; culture_keywords?: string[] } | null;
+  created_at: string;
+}
+
 export interface MatchItem {
   experience_id: string;
   experience_title: string;
@@ -151,6 +161,14 @@ export interface GeneratedDocResponse {
   content: string;
   version: number;
   claims_count: number;
+  created_at: string;
+}
+
+export interface DocumentListItem {
+  id: string;
+  job_id: string;
+  doc_type: string;
+  version: number;
   created_at: string;
 }
 
@@ -202,6 +220,11 @@ const DOC_TYPE_TO_BACKEND: Record<FrontendDocType, string> = {
   career: 'career_desc',
   coverLetter: 'cover_letter',
 };
+export const BACKEND_TO_FRONTEND_DOC_TYPE: Record<string, FrontendDocType> = {
+  resume: 'resume',
+  career_desc: 'career',
+  cover_letter: 'coverLetter',
+};
 
 export const api = {
   experiences: {
@@ -222,17 +245,23 @@ export const api = {
   },
   experienceEngine: {
     decompose: (experienceId: string) => post<DecomposeResponse>('/experience-engine/decompose', { experience_id: experienceId }),
+    get3c4p: (experienceId: string) => get<ThreeCFourP & { id: string; experience_id: string } | null>(`/experience-engine/${experienceId}/3c4p`),
+    getEvidence: (experienceId: string) => get<EvidenceItem[]>(`/experience-engine/${experienceId}/evidence`),
+    getAnchors: (experienceId: string) => get<AnchorItem[]>(`/experience-engine/${experienceId}/anchors`),
   },
   jobs: {
     analyze: (data: { company_name?: string; position?: string; jd_raw_text: string }) =>
       post<JDAnalysisResponse>('/jobs', data),
+    list: () => get<JobResponse[]>('/jobs'),
     delete: (jobId: string) => del<{ message: string }>(`/jobs/${jobId}`),
   },
   matching: {
     match: (jobId: string) => post<MatchResponse>('/matching/match', { job_id: jobId }),
+    getMatches: (jobId: string) => get<MatchResponse>(`/matching/${jobId}/matches`),
   },
   strategy: {
     generate: (jobId: string) => post<StrategyResponse>('/strategy/strategy', { job_id: jobId }),
+    getStrategy: (jobId: string) => get<StrategyResponse>(`/strategy/${jobId}/strategy`),
   },
   documents: {
     generate: (jobId: string, docType: FrontendDocType) =>
@@ -240,10 +269,13 @@ export const api = {
         job_id: jobId,
         doc_type: DOC_TYPE_TO_BACKEND[docType],
       }),
+    list: (jobId: string) => get<DocumentListItem[]>(`/documents/generate/documents/${jobId}/list`),
+    get: (docId: string) => get<GeneratedDocResponse>(`/documents/generate/documents/${docId}`),
   },
   validation: {
     validate: (generatedDocumentId: string) =>
       post<ValidationResponse>('/validation/validation/', { generated_document_id: generatedDocumentId }),
+    get: (generatedDocumentId: string) => get<ValidationResponse>(`/validation/validation/${generatedDocumentId}`),
   },
   defense: {
     generate: (generatedDocumentId: string) =>
@@ -254,5 +286,6 @@ export const api = {
       expected_answer_hint?: string;
       user_answer: string;
     }) => post<AnswerFeedbackResponse>('/defense/defense/answer', data),
+    get: (generatedDocumentId: string) => get<DefenseResponse>(`/defense/defense/${generatedDocumentId}`),
   },
 };
