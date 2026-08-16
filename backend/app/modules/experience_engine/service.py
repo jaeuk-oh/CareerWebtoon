@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +19,8 @@ class ExperienceEngineService:
         experience = result.mappings().first()
         
         if not experience:
-            raise Exception("Experience not found or not owned by user")
-            
+            raise ValueError("Experience not found or not owned by user")
+
         content_to_analyze = f"Title: {experience.get('title', '')}\nDescription: {experience.get('description', '')}"
         if experience.get('situation'):
             content_to_analyze += f"\nSituation: {experience['situation']}"
@@ -29,23 +30,14 @@ class ExperienceEngineService:
             content_to_analyze += f"\nAction: {experience['action']}"
         if experience.get('result'):
             content_to_analyze += f"\nResult: {experience['result']}"
-            
-        # Call LLM for 3C4P
-        three_c_four_p_res = await self.llm_gateway.generate_json(
-            prompt=content_to_analyze,
-            system_prompt=THREE_C_FOUR_P_SYSTEM
-        )
-        
-        # Call LLM for Evidence
-        evidence_res = await self.llm_gateway.generate_json(
-            prompt=content_to_analyze,
-            system_prompt=EVIDENCE_SYSTEM
-        )
-        
-        # Call LLM for Anchors
-        anchors_res = await self.llm_gateway.generate_json(
-            prompt=content_to_analyze,
-            system_prompt=ANCHOR_SYSTEM
+
+        # The 3C4P/evidence/anchor extractions are independent reads of the same
+        # source text, so running them concurrently cuts wall-clock time (and the
+        # window for a retry-exhausting LLM timeout) roughly 3x versus sequential calls.
+        three_c_four_p_res, evidence_res, anchors_res = await asyncio.gather(
+            self.llm_gateway.generate_json(prompt=content_to_analyze, system_prompt=THREE_C_FOUR_P_SYSTEM),
+            self.llm_gateway.generate_json(prompt=content_to_analyze, system_prompt=EVIDENCE_SYSTEM),
+            self.llm_gateway.generate_json(prompt=content_to_analyze, system_prompt=ANCHOR_SYSTEM),
         )
         
         # Ensure 3C4P Response matches Schema
@@ -141,7 +133,7 @@ class ExperienceEngineService:
         query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
         check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
         if not check_res.first():
-            raise Exception("Experience not found or not owned by user")
+            raise ValueError("Experience not found or not owned by user")
             
         query = text("SELECT * FROM experience_3c4p WHERE experience_id = :exp_id")
         result = await self.db.execute(query, {"exp_id": experience_id})
@@ -153,7 +145,7 @@ class ExperienceEngineService:
         query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
         check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
         if not check_res.first():
-            raise Exception("Experience not found or not owned by user")
+            raise ValueError("Experience not found or not owned by user")
             
         query = text("SELECT * FROM evidence WHERE experience_id = :exp_id")
         result = await self.db.execute(query, {"exp_id": experience_id})
@@ -164,7 +156,7 @@ class ExperienceEngineService:
         query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
         check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
         if not check_res.first():
-            raise Exception("Experience not found or not owned by user")
+            raise ValueError("Experience not found or not owned by user")
             
         query = text("SELECT * FROM experience_anchors WHERE experience_id = :exp_id")
         result = await self.db.execute(query, {"exp_id": experience_id})
