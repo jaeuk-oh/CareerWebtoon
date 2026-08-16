@@ -127,7 +127,7 @@ class StrategyEngineService:
 
             gap_analysis = strategy.gap_analysis or {}
             return {
-                "id": strategy.id,
+                "id": str(strategy.id),
                 "job_id": job_id,
                 "primary_experience": {"id": strategy.primary_experience_id},
                 "secondary_experience": {"id": strategy.secondary_experience_id},

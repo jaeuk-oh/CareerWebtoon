@@ -97,7 +97,7 @@ class DefenseEngineService:
         rows = res.fetchall()
         questions = [
             {
-                "id": r.id,
+                "id": str(r.id),
                 "claim_text": r.claim_text,
                 "question": r.question,
                 "difficulty": r.difficulty,

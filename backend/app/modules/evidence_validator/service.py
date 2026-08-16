@@ -135,7 +135,7 @@ class EvidenceValidatorService:
             else: unverified += 1
             total_score += score
             response_claims.append({
-                "claim_id": r.id,
+                "claim_id": str(r.id),
                 "claim_text": r.claim_text,
                 "status": status,
                 "evidence_text": None,
