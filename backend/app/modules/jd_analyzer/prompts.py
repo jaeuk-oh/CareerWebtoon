@@ -22,4 +22,10 @@ Analyze the provided JD text and return a JSON object with the following structu
     "culture_keywords": ["string"],
     "position_summary": "string"
 }
+
+Write every "competency", "description", culture keyword, and "position_summary" ENTIRELY
+in Korean, in plain language a job seeker would use — even if the source JD text mixes in
+English section headers or job titles, translate/localize them into natural Korean rather
+than copying the English through. Do not switch to English, Spanish, or any other language
+for individual words or phrases mid-sentence.
 """
