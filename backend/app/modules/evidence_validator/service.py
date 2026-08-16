@@ -1,3 +1,4 @@
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from .schemas import ValidationResponse
@@ -40,11 +41,15 @@ class EvidenceValidatorService:
             for r in res_evidence.fetchall()
         ]
         
-        # 3. Call LLM to validate each claim
+        # 3. Call LLM to validate each claim. Give this real JSON (not a Python
+        # dict repr) and enough max_tokens headroom — with several claims, each
+        # needing its own status/score/issues, the default budget was truncating
+        # the output mid-string and breaking json.loads.
         context = {"claims": claims, "evidence": evidence}
         validation = await self.llm.evaluate_json(
             system_prompt=VALIDATION_SYSTEM,
-            prompt=str(context)
+            prompt=json.dumps(context, ensure_ascii=False, default=str),
+            max_tokens=4096
         )
         
         validated_claims = validation.get("claims", [])
