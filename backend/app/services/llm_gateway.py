@@ -55,7 +55,7 @@ class LLMGateway:
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"Error in generate: {e}")
+            logger.error(f"Error in generate: {e!r}")
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -71,7 +71,7 @@ class LLMGateway:
             content = response.choices[0].message.content
             return json.loads(content)
         except Exception as e:
-            logger.error(f"Error in generate_json: {e}")
+            logger.error(f"Error in generate_json: {e!r}")
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -85,7 +85,7 @@ class LLMGateway:
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.error(f"Error in analyze: {e}")
+            logger.error(f"Error in analyze: {e!r}")
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -101,7 +101,7 @@ class LLMGateway:
             content = response.choices[0].message.content
             return json.loads(content)
         except Exception as e:
-            logger.error(f"Error in evaluate_json: {e}")
+            logger.error(f"Error in evaluate_json: {e!r}")
             raise
 
     async def stream_generate(self, prompt: str, system_prompt: str = None) -> AsyncGenerator[str, None]:
@@ -116,7 +116,7 @@ class LLMGateway:
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            logger.error(f"Error in stream_generate: {e}")
+            logger.error(f"Error in stream_generate: {e!r}")
             raise
         finally:
             await client.close()
