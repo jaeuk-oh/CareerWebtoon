@@ -23,4 +23,7 @@ async def get_validation(
     db: AsyncSession = Depends(get_db)
 ):
     service = EvidenceValidatorService(db)
-    return await service.get_validation(document_id, current_user["sub"])
+    try:
+        return await service.get_validation(document_id, current_user["sub"])
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
