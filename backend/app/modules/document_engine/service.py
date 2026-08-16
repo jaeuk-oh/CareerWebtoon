@@ -165,7 +165,7 @@ class DocumentEngineService:
             text("SELECT id, job_id, doc_type, version, created_at FROM generated_documents WHERE job_id = :job_id AND user_id = :user_id"),
             {"job_id": job_id, "user_id": user_id}
         )
-        return [{"id": r.id, "job_id": r.job_id, "doc_type": r.doc_type, "version": r.version, "created_at": str(r.created_at)} for r in res.fetchall()]
+        return [{"id": str(r.id), "job_id": str(r.job_id), "doc_type": r.doc_type, "version": r.version, "created_at": str(r.created_at)} for r in res.fetchall()]
 
     async def get_document(self, doc_id: str, user_id: str) -> dict:
         res = await self.db.execute(
@@ -183,8 +183,8 @@ class DocumentEngineService:
         claims_count = res_claims.scalar() or 0
             
         return {
-            "id": doc.id,
-            "job_id": doc.job_id,
+            "id": str(doc.id),
+            "job_id": str(doc.job_id),
             "doc_type": doc.doc_type,
             "content": doc.content,
             "version": doc.version,

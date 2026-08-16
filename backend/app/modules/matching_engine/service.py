@@ -114,9 +114,9 @@ class MatchingEngineService:
                 
             matches = [
                 {
-                    "experience_id": r.experience_id,
+                    "experience_id": str(r.experience_id),
                     "experience_title": r.experience_title,
-                    "anchor_id": r.anchor_id,
+                    "anchor_id": str(r.anchor_id) if r.anchor_id else None,
                     "anchor_type": r.anchor_type,
                     "match_score": r.match_score,
                     "match_type": r.match_type,

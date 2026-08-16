@@ -79,8 +79,8 @@ class JDAnalyzerService:
             jobs = result.fetchall()
             return [
                 {
-                    "id": job.id,
-                    "user_id": job.user_id,
+                    "id": str(job.id),
+                    "user_id": str(job.user_id),
                     "company_name": job.company_name,
                     "position": job.position,
                     "jd_raw_text": job.jd_raw_text,
@@ -101,8 +101,8 @@ class JDAnalyzerService:
                 raise AppException(status_code=404, detail="Job not found")
                 
             return {
-                "id": job.id,
-                "user_id": job.user_id,
+                "id": str(job.id),
+                "user_id": str(job.user_id),
                 "company_name": job.company_name,
                 "position": job.position,
                 "jd_raw_text": job.jd_raw_text,
