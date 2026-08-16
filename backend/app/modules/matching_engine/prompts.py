@@ -21,7 +21,9 @@ Return a JSON object with the following structure:
             "anchor_type": "string (optional)",
             "match_score": float, // 0.0 to 1.0
             "match_type": "string", // "pilsal", "mipsal", or "bilsal"
-            "rationale": "string" // Write in Korean, in plain language a job seeker would use.
+            "rationale": "string" // Write ENTIRELY in Korean, in plain language a job seeker would use.
+                                    // Do not switch to English, Spanish, or any other language for
+                                    // individual words or phrases mid-sentence — every word must be Korean.
                                     // Never mention "pilsal"/"mipsal"/"bilsal" (or their Korean
                                     // names) inside the rationale text itself — those labels are
                                     // shown separately in the UI. Just explain the actual fit.
