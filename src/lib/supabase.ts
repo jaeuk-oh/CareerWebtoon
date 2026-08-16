@@ -10,9 +10,7 @@ let ensureSessionPromise: Promise<string> | null = null;
 /**
  * Returns a valid access token, signing in anonymously if there's no session yet.
  * Anonymous auth lets the app work immediately with no signup wall, while still
- * giving the FastAPI backend a real Supabase-issued JWT for every request. A user
- * can later upgrade this same anonymous identity to a real Google account via
- * signInWithGoogle() below without losing anything saved under it.
+ * giving the FastAPI backend a real Supabase-issued JWT for every request.
  */
 export async function ensureSession(): Promise<string> {
   if (!ensureSessionPromise) {
@@ -36,34 +34,18 @@ export async function getUserId(): Promise<string | null> {
   return data.session?.user.id ?? null;
 }
 
-export async function isAnonymousUser(): Promise<boolean> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.user.is_anonymous ?? true;
-}
-
 /**
- * Starts Google sign-in. If the current session is still anonymous, this upgrades
- * that exact account in place (same user_id, so every experience/job/document
- * already saved stays attached) instead of creating a brand new one. Both paths
- * redirect to Google and back to the current origin.
+ * Starts Google sign-in. Data added before logging in stays under the anonymous
+ * session and isn't carried over — signing in switches to your permanent Google
+ * account's own data. Redirects to Google and back to the current origin.
  */
 export async function signInWithGoogle(): Promise<void> {
-  const { data } = await supabase.auth.getSession();
   const redirectTo = window.location.origin;
-
-  if (data.session?.user.is_anonymous) {
-    const { error } = await supabase.auth.linkIdentity({
-      provider: 'google',
-      options: { redirectTo }
-    });
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo }
-    });
-    if (error) throw error;
-  }
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo }
+  });
+  if (error) throw error;
 }
 
 /**

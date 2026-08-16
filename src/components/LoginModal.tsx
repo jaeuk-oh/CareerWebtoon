@@ -88,7 +88,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <p className="text-xs text-slate-500 font-medium">
                 {user.isLoggedIn
                   ? user.email || '내 계정'
-                  : '로그인하지 않아도 사용할 수 있지만, 다른 기기에서 이어서 쓰려면 Google 계정이 필요해요'}
+                  : '로그인하지 않아도 사용할 수 있지만, 다른 기기에서 이어서 쓰려면 Google 로그인이 필요해요'}
               </p>
             </div>
           </div>
@@ -107,8 +107,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
           <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
             {user.isLoggedIn
-              ? '지금까지 등록한 경험과 지원 내역은 이 계정에 안전하게 저장됩니다.'
-              : '지금 등록하는 경험과 지원 내역은 이 브라우저에만 저장됩니다. Google로 로그인하면 지금까지 작업한 내용을 그대로 이 계정에 연결해 다른 기기에서도 이어서 쓸 수 있어요.'}
+              ? '이 계정으로 등록한 경험과 지원 내역은 다른 기기에서도 로그인하면 그대로 볼 수 있습니다.'
+              : '로그인 전에 등록하는 경험과 지원 내역은 이 브라우저에만 저장되며, Google로 로그인하면 별도의 계정으로 새로 시작합니다.'}
           </p>
 
           <form onSubmit={handleSaveRole} className="space-y-4">
