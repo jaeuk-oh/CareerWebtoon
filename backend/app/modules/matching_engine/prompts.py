@@ -21,7 +21,10 @@ Return a JSON object with the following structure:
             "anchor_type": "string (optional)",
             "match_score": float, // 0.0 to 1.0
             "match_type": "string", // "pilsal", "mipsal", or "bilsal"
-            "rationale": "string" // Explanation of why this score and type were assigned
+            "rationale": "string" // Write in Korean, in plain language a job seeker would use.
+                                    // Never mention "pilsal"/"mipsal"/"bilsal" (or their Korean
+                                    // names) inside the rationale text itself — those labels are
+                                    // shown separately in the UI. Just explain the actual fit.
         }
     ],
     "coverage_score": float // Overall score indicating how well the candidate's profile covers the JD requirements (0.0 to 1.0)

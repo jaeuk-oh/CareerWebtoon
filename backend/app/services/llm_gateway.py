@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import AsyncGenerator
@@ -7,13 +8,18 @@ from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# httpx's `timeout` only bounds each individual socket read, not the request as a
+# whole — a connection that trickles data (or keeps the socket alive without ever
+# finishing) can dodge it indefinitely. Wrapping every call in asyncio.wait_for gives
+# a real wall-clock deadline so a stuck request always ends up raising and handing
+# control back to tenacity's @retry instead of hanging the request forever.
+HARD_CALL_TIMEOUT = 60.0
+
 class LLMGateway:
     def __init__(self):
         settings = get_settings()
-        self.client = AsyncOpenAI(
-            api_key=settings.NVIDIA_API_KEY,
-            base_url=settings.NVIDIA_API_BASE_URL
-        )
+        self._api_key = settings.NVIDIA_API_KEY
+        self._base_url = settings.NVIDIA_API_BASE_URL
         self.WRITER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1"
         self.CRITIC_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
@@ -24,10 +30,24 @@ class LLMGateway:
         messages.append({"role": "user", "content": prompt})
         return messages
 
+    async def _create(self, **kwargs):
+        # A fresh client (and its own connection pool) per call, not shared across
+        # tenacity's retries: cancelling a request via asyncio.wait_for's hard
+        # deadline doesn't cleanly unwind httpx's HTTP/2 stream state, and reusing
+        # that same client on the next attempt can fail with "Already borrowed"
+        # instead of actually retrying against a clean connection.
+        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=45.0)
+        try:
+            return await asyncio.wait_for(
+                client.chat.completions.create(**kwargs), timeout=HARD_CALL_TIMEOUT
+            )
+        finally:
+            await client.close()
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate(self, prompt: str, system_prompt: str = None, temperature: float = 0.3, max_tokens: int = 2048) -> str:
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._create(
                 model=self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=temperature,
@@ -41,7 +61,7 @@ class LLMGateway:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate_json(self, prompt: str, system_prompt: str = None, max_tokens: int = 2048) -> dict:
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._create(
                 model=self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=0.1,
@@ -57,7 +77,7 @@ class LLMGateway:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def analyze(self, prompt: str, system_prompt: str = None, temperature: float = 0.2, max_tokens: int = 2048) -> str:
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._create(
                 model=self.CRITIC_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=temperature,
@@ -71,7 +91,7 @@ class LLMGateway:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def evaluate_json(self, prompt: str, system_prompt: str = None, max_tokens: int = 2048) -> dict:
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._create(
                 model=self.CRITIC_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=0.1,
@@ -85,8 +105,9 @@ class LLMGateway:
             raise
 
     async def stream_generate(self, prompt: str, system_prompt: str = None) -> AsyncGenerator[str, None]:
+        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=45.0)
         try:
-            response = await self.client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 stream=True
@@ -97,6 +118,8 @@ class LLMGateway:
         except Exception as e:
             logger.error(f"Error in stream_generate: {e}")
             raise
+        finally:
+            await client.close()
 
 def get_llm_gateway() -> LLMGateway:
     return LLMGateway()

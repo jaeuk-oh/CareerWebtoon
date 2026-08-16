@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from .schemas import DefenseResponse
-from .prompts import DEFENSE_SYSTEM
+from .prompts import DEFENSE_SYSTEM, ANSWER_FEEDBACK_SYSTEM
 from app.services.llm_gateway import LLMGateway
 
 class DefenseEngineService:
@@ -75,3 +75,27 @@ class DefenseEngineService:
     async def get_defense(self, generated_document_id: str, user_id: str) -> dict:
         # Placeholder for fetch logic
         return {"document_id": generated_document_id}
+
+    async def generate_answer_feedback(
+        self, question: str, claim_text: str, expected_answer_hint: str | None, user_answer: str
+    ) -> dict:
+        context = {
+            "question": question,
+            "claim_text": claim_text,
+            "expected_answer_hint": expected_answer_hint or "",
+            "user_answer": user_answer,
+        }
+        result = await self.llm.evaluate_json(
+            system_prompt=ANSWER_FEEDBACK_SYSTEM,
+            prompt=str(context),
+            max_tokens=512
+        )
+
+        feedback = result.get("feedback") or "답변을 다시 한번 구체적으로 정리해보세요."
+        is_strong = bool(result.get("is_strong", False))
+        try:
+            score_delta = max(-5, min(5, int(result.get("score_delta", 0))))
+        except (TypeError, ValueError):
+            score_delta = 0
+
+        return {"feedback": feedback, "is_strong": is_strong, "score_delta": score_delta}

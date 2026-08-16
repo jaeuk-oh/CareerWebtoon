@@ -36,7 +36,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     deleteExperience,
     deletePipeline,
     setActivePipelineId,
-    loadDemoData,
     clearAllData,
     requestConfirm
   } = useApp();
@@ -65,8 +64,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const handleDeletePipeline = (id: string, companyName: string, e: React.MouseEvent) => {
     e.stopPropagation();
     requestConfirm({
-      title: '파이프라인을 삭제할까요?',
-      message: `'${companyName}' 지원 파이프라인과 연결된 문서 작업 내역이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
+      title: '지원 내역을 삭제할까요?',
+      message: `'${companyName}' 지원과 연결된 문서 작업 내역이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
       confirmLabel: '삭제하기',
       onConfirm: () => deletePipeline(id)
     });
@@ -75,8 +74,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const handleDeleteExperience = (id: string, title: string, e: React.MouseEvent) => {
     e.stopPropagation();
     requestConfirm({
-      title: '경험 자산을 삭제할까요?',
-      message: `'${title}' 3C4P 경험 자산이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
+      title: '경험을 삭제할까요?',
+      message: `'${title}' 경험이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
       confirmLabel: '삭제하기',
       onConfirm: () => deleteExperience(id)
     });
@@ -85,7 +84,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const handleClearAllData = () => {
     requestConfirm({
       title: '모든 데이터를 초기화할까요?',
-      message: '경험 자산, 지원 파이프라인, 작성 중인 문서를 포함한 모든 데이터가 영구적으로 삭제됩니다.',
+      message: '경험, 지원 내역, 작성 중인 문서를 포함한 모든 데이터가 영구적으로 삭제됩니다.',
       confirmLabel: '전체 초기화',
       onConfirm: clearAllData
     });
@@ -125,7 +124,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               onClick={() => onNavigate('pipeline')}
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-xs active:scale-98"
             >
-              <Plus size={16} /> 새 지원 파이프라인 생성
+              <Plus size={16} /> 새 지원 시작하기
             </button>
 
             <nav className="flex flex-col gap-1 mt-4">
@@ -152,7 +151,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 }`}
               >
                 <span className="flex items-center gap-2.5">
-                  <Database size={16} /> Candidate Vault
+                  <Database size={16} /> 경험 보관함
                 </span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'vault' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                   {experiencesLoading ? '···' : experiences.length}
@@ -177,28 +176,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </nav>
           </div>
 
-          {/* Quick Demo Controls Box */}
+          {/* Workspace Management Box */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3">
             <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
               <Sparkles size={14} className="text-emerald-600" /> 워크스페이스 관리
             </h4>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              3C4P 샘플 데이터를 미리 확인하거나 전체 데이터를 초기화할 수 있습니다.
+              등록한 경험, 지원 내역, 작성한 문서를 전부 초기화할 수 있습니다.
             </p>
-            <div className="flex gap-2">
-              <button
-                onClick={loadDemoData}
-                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors"
-              >
-                데모 로드
-              </button>
-              <button
-                onClick={handleClearAllData}
-                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors"
-              >
-                초기화
-              </button>
-            </div>
+            <button
+              onClick={handleClearAllData}
+              className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors"
+            >
+              전체 초기화
+            </button>
           </div>
         </aside>
 
@@ -209,13 +200,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200/60 rounded-full text-emerald-800 text-xs font-bold mb-3">
                 <ShieldCheck size={14} className="text-emerald-600" />
-                <span>Evidence-based Copilot Ready</span>
+                <span>근거 기반 지원 코파일럿 준비 완료</span>
               </div>
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-1">
                 반가워요, {user.name}님!
               </h2>
               <p className="text-xs md:text-sm text-slate-500 font-medium">
-                {user.targetRole ? `${user.targetRole} 직무` : '지원 직무'} 맞춤 3C4P 경험 자산으로 지원서 방어력을 극대화하세요.
+                {user.targetRole ? `${user.targetRole} 직무` : '지원 직무'} 맞춤 경험으로 지원서 방어력을 극대화하세요.
               </p>
             </div>
 
@@ -224,13 +215,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 onClick={handleOpenCreateExp}
                 className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
               >
-                <Plus size={15} /> 3C4P 경험 등록
+                <Plus size={15} /> 경험 등록
               </button>
               <button
                 onClick={() => onNavigate('pipeline')}
                 className="flex-1 md:flex-none px-4 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
               >
-                <Plus size={15} /> 새 파이프라인
+                <Plus size={15} /> 새 지원
               </button>
             </div>
           </section>
@@ -238,7 +229,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           {/* VIEW TAB 1: INTEGRATED DASHBOARD */}
           {activeTab === 'dashboard' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Candidate Vault Quick Summary Card */}
+              {/* Experience Vault Quick Summary Card */}
               <div className="lg:col-span-1 space-y-6">
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
                   <div>
@@ -247,7 +238,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                         <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold">
                           <Database size={16} />
                         </div>
-                        <h3 className="text-base font-bold text-slate-900">Candidate Vault</h3>
+                        <h3 className="text-base font-bold text-slate-900">경험 보관함</h3>
                       </div>
                       <button
                         onClick={handleOpenCreateExp}
@@ -259,7 +250,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
                     <div className="space-y-2.5 mb-6">
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">구조화된 3C4P 경험</span>
+                        <span className="text-xs font-semibold text-slate-600">등록된 경험</span>
                         {experiencesLoading ? (
                           <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
                         ) : (
@@ -267,7 +258,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                         )}
                       </div>
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">수치 검증 증거 자산</span>
+                        <span className="text-xs font-semibold text-slate-600">수치 근거가 있는 경험</span>
                         {experiencesLoading ? (
                           <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
                         ) : (
@@ -275,7 +266,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                         )}
                       </div>
                       <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">진행 중 지원 파이프라인</span>
+                        <span className="text-xs font-semibold text-slate-600">진행 중인 지원</span>
                         <span className="text-sm font-bold text-slate-900">{pipelines.length}건</span>
                       </div>
                     </div>
@@ -285,7 +276,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     onClick={() => setActiveTab('vault')}
                     className="w-full py-2.5 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
                   >
-                    <span>경험 자산 전체 보기</span>
+                    <span>경험 전체 보기</span>
                     <ArrowRight size={14} />
                   </button>
                 </div>
@@ -296,7 +287,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                     <TrendingUp size={18} className="text-emerald-600" />
-                    <span>진행 중인 지원 파이프라인</span>
+                    <span>진행 중인 지원</span>
                   </h3>
                   <span className="text-xs text-slate-500 font-medium">총 {pipelines.length}건</span>
                 </div>
@@ -306,24 +297,16 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
                       <FolderPlus size={24} />
                     </div>
-                    <h4 className="font-bold text-slate-900 text-base mb-1">등록된 지원 파이프라인이 없습니다</h4>
+                    <h4 className="font-bold text-slate-900 text-base mb-1">등록된 지원이 없습니다</h4>
                     <p className="text-xs text-slate-500 mb-5 max-w-md">
-                      목표 지원 기업의 채용 공고(JD)를 입력하고 AI가 매칭한 최적 지원 전략을 수립하세요.
+                      목표 지원 기업의 채용 공고(JD)를 입력하면 AI가 내 경험과 매칭한 지원 전략을 만들어줍니다.
                     </p>
-                    <div className="flex gap-2.5">
-                      <button
-                        onClick={() => onNavigate('pipeline')}
-                        className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
-                      >
-                        <Plus size={15} /> 첫 파이프라인 생성
-                      </button>
-                      <button
-                        onClick={loadDemoData}
-                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs transition-colors"
-                      >
-                        데모 데이터 체험
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => onNavigate('pipeline')}
+                      className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
+                    >
+                      <Plus size={15} /> 첫 지원 시작하기
+                    </button>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -349,8 +332,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                             <button
                               onClick={(e) => handleDeletePipeline(p.id, p.targetCompany, e)}
                               className="text-slate-300 hover:text-rose-600 p-1 rounded-lg transition-colors"
-                              aria-label={`${p.targetCompany} 파이프라인 삭제`}
-                              title="파이프라인 삭제"
+                              aria-label={`${p.targetCompany} 지원 삭제`}
+                              title="지원 삭제"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -358,13 +341,11 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                         </div>
 
                         {/* Pipeline Stepper Progress */}
-                        <div className="grid grid-cols-5 gap-1 my-5 pt-3 border-t border-slate-100 text-center">
+                        <div className="grid grid-cols-3 gap-1 my-5 pt-3 border-t border-slate-100 text-center">
                           {[
-                            { step: 'JD 분석', done: true },
+                            { step: '공고 분석', done: true },
                             { step: '경험 매칭', done: true },
                             { step: '전략 추천', done: true },
-                            { step: '문서 생성', done: true },
-                            { step: '방어 검증', done: true },
                           ].map((s, idx) => (
                             <div key={idx} className="flex flex-col items-center gap-1">
                               <div
@@ -379,27 +360,16 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                           ))}
                         </div>
 
-                        <div className="flex gap-2.5 pt-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenPipeline(p.id);
-                            }}
-                            className="flex-1 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
-                          >
-                            <span>코파일럿 에디터 열기</span>
-                            <ArrowRight size={14} />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigate('portfolio');
-                            }}
-                            className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-bold transition-colors"
-                          >
-                            포트폴리오 전략
-                          </button>
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenPipeline(p.id);
+                          }}
+                          className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>지원서 작성하러 가기</span>
+                          <ArrowRight size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -414,17 +384,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                    Candidate Vault (3C4P 근거 자산 목록)
+                    경험 보관함
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    카드를 클릭하면 3C4P 세부 내용을 수정하거나 업데이트할 수 있습니다.
+                    카드를 클릭하면 경험 세부 내용을 수정하거나 업데이트할 수 있습니다.
                   </p>
                 </div>
                 <button
                   onClick={handleOpenCreateExp}
                   className="px-4 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
                 >
-                  <Plus size={15} /> 3C4P 경험 등록
+                  <Plus size={15} /> 경험 등록
                 </button>
               </div>
 
@@ -461,13 +431,13 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               ) : filteredExperiences.length === 0 ? (
                 <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center">
                   <Database size={32} className="mx-auto text-slate-300 mb-3" />
-                  <h4 className="font-bold text-slate-900 text-base mb-1">검색된 경험 자산이 없습니다</h4>
-                  <p className="text-xs text-slate-500 mb-5">새 3C4P 경험을 추가하여 면접 방어 자산을 채워보세요.</p>
+                  <h4 className="font-bold text-slate-900 text-base mb-1">검색된 경험이 없습니다</h4>
+                  <p className="text-xs text-slate-500 mb-5">새 경험을 추가하여 면접 방어 근거를 채워보세요.</p>
                   <button
                     onClick={handleOpenCreateExp}
                     className="px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs"
                   >
-                    첫 3C4P 경험 등록하기
+                    첫 경험 등록하기
                   </button>
                 </div>
               ) : (
@@ -531,7 +501,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
                       {exp.evidenceSource && (
                         <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-                          <span>Source: <strong className="text-slate-800 font-medium">{exp.evidenceSource}</strong></span>
+                          <span>출처: <strong className="text-slate-800 font-medium">{exp.evidenceSource}</strong></span>
                           <span className="text-emerald-600 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
                             수정하기 <ChevronRight size={12} />
                           </span>
@@ -549,7 +519,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <div className="space-y-6">
               <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
                 <h3 className="text-lg font-bold text-slate-900">지원 이력 및 관리</h3>
-                <p className="text-xs text-slate-500 mt-0.5">생성된 지원 파이프라인 문서들의 버전 히스토리입니다.</p>
+                <p className="text-xs text-slate-500 mt-0.5">지금까지 만든 지원 건과 생성된 문서들의 기록입니다.</p>
               </div>
 
               {pipelines.length === 0 ? (
@@ -586,7 +556,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                               onClick={() => handleOpenPipeline(p.id)}
                               className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-xs hover:bg-emerald-600 transition-colors"
                             >
-                              에디터 열기
+                              지원서 작성 열기
                             </button>
                           </td>
                         </tr>

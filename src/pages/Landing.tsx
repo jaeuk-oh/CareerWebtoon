@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { ShieldCheck, GitMerge, Target, ShieldAlert, Database, ArrowRight, User, Sparkles, CheckCircle2 } from 'lucide-react';
+import React from 'react';
+import { ShieldCheck, GitMerge, Target, ShieldAlert, Database } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
-import { useApp } from '../context/AppContext';
-import { LoginModal } from '../components/LoginModal';
 import { NavigationHeader } from '../components/NavigationHeader';
 
 interface LandingViewProps {
@@ -11,13 +9,6 @@ interface LandingViewProps {
 }
 
 const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
-  const { loadDemoData } = useApp();
-
-  const handleDemoClick = () => {
-    loadDemoData();
-    onNavigate('dashboard');
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <NavigationHeader currentView="landing" onNavigate={onNavigate} />
@@ -31,7 +22,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-xs mb-6 shadow-2xs"
           >
             <ShieldCheck size={16} className="text-emerald-600 animate-pulse" />
-            <span>Writing AI가 아닌, Evidence-based Application AI</span>
+            <span>그럴듯한 글쓰기 AI가 아니라, 근거 기반 지원서 AI</span>
           </motion.div>
 
           <motion.h1
@@ -67,15 +58,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
               className="bg-slate-900 hover:bg-emerald-600 text-white px-8 py-4 rounded-2xl font-bold text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2.5 active:scale-98"
             >
               <Database size={20} />
-              <span>워크스페이스 시작하기</span>
-            </button>
-
-            <button
-              onClick={handleDemoClick}
-              className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 px-7 py-4 rounded-2xl font-bold text-base transition-all shadow-2xs flex items-center justify-center gap-2 active:scale-98"
-            >
-              <span>실시간 데모 데이터 로드</span>
-              <ArrowRight size={18} />
+              <span>내 워크스페이스 시작하기</span>
             </button>
           </motion.div>
         </section>
@@ -87,9 +70,9 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
               <div className="w-12 h-12 rounded-2xl bg-slate-900 text-emerald-400 flex items-center justify-center mb-6 shadow-xs font-bold">
                 <GitMerge size={24} />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2.5">JD × 3C4P 정밀 매칭</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-2.5">채용 공고 맞춤 경험 매칭</h3>
               <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-                단순 입사 지원서 작성이 아닙니다. 채용 공고(JD)를 실시간 분석하여 Candidate Vault 경험 중 면접 방어력이 가장 높은 '대표 앵커'를 자동 선별합니다.
+                단순 입사 지원서 작성이 아닙니다. 채용 공고(JD)를 분석해 내 경험 중 면접 방어력이 가장 높은 '대표 경험'을 자동으로 골라줍니다.
               </p>
             </div>
 
@@ -99,7 +82,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-2.5">수치 및 근거 정합성 검증</h3>
               <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-                "업무 효율 40% 향상"과 같은 모호한 주장을 Evidence Validator가 추적합니다. Vault 원본 데이터와 일치하지 않는 과장 문장은 사전에 교정합니다.
+                "업무 효율 40% 향상"과 같은 모호한 주장을 AI가 실제 근거와 대조해 추적합니다. 내 경험과 일치하지 않는 과장 문장은 사전에 걸러냅니다.
               </p>
             </div>
 
@@ -107,9 +90,9 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
               <div className="w-12 h-12 rounded-3xl bg-slate-900 text-emerald-400 flex items-center justify-center mb-6 shadow-xs font-bold">
                 <ShieldAlert size={24} />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2.5">AI 모의 압박 면접 방어</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-2.5">AI 모의 압박 면접</h3>
               <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-                작성된 지원서를 기반으로 AI 면접관이 실시간 압박 꼬리질문을 던집니다. 유저가 시뮬레이션할수록 방어 점수가 100점에 수렴합니다.
+                작성한 지원서를 기반으로 AI 면접관이 압박 꼬리질문을 던지고, 실제로 답변한 내용을 근거로 강약을 평가합니다.
               </p>
             </div>
           </div>
@@ -117,7 +100,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onNavigate }) => {
       </main>
 
       <footer className="py-8 bg-white border-t border-slate-200 text-center text-xs text-slate-500 font-medium">
-        © 2026 CareerCraft. All rights reserved. Evidence-Based Career Copilot.
+        © 2026 CareerCraft. 근거 기반 취업 코파일럿.
       </footer>
     </div>
   );
