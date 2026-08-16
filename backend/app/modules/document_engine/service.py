@@ -5,6 +5,24 @@ from .schemas import GenerateRequest, GeneratedDocResponse
 from .prompts import RESUME_SYSTEM, COVER_LETTER_SYSTEM, CAREER_DESC_SYSTEM, CLAIM_EXTRACT_SYSTEM
 from app.services.llm_gateway import LLMGateway
 
+
+def _as_uuid_or_none(value) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except ValueError:
+        return None
+
+
+_VALID_CLAIM_STATUSES = {"VERIFIED", "UNVERIFIED", "FLAGGED"}
+
+
+def _normalize_claim_status(value) -> str:
+    if isinstance(value, str) and value.strip().upper() in _VALID_CLAIM_STATUSES:
+        return value.strip().upper()
+    return "UNVERIFIED"
+
 class DocumentEngineService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -29,10 +47,10 @@ class DocumentEngineService:
             prompt = CAREER_DESC_SYSTEM
             
         # 3. Call LLM (Writer model)
-        generated_content = await self.llm.generate(system_prompt=prompt, user_prompt=context)
-        
+        generated_content = await self.llm.generate(system_prompt=prompt, prompt=context)
+
         # 4. Extract claims
-        extraction = await self.llm.generate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, user_prompt=generated_content)
+        extraction = await self.llm.generate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, prompt=generated_content)
         claims = extraction.get("claims", [])
         
         # 5. Save to generated_documents + claims tables
@@ -55,8 +73,8 @@ class DocumentEngineService:
                     "id": str(uuid.uuid4()),
                     "doc_id": doc_id,
                     "claim_text": claim.get("claim_text"),
-                    "evidence_id": claim.get("evidence_id"),
-                    "status": claim.get("status")
+                    "evidence_id": _as_uuid_or_none(claim.get("evidence_id")),
+                    "status": _normalize_claim_status(claim.get("status"))
                 }
             )
             

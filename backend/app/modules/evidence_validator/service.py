@@ -4,6 +4,14 @@ from .schemas import ValidationResponse
 from .prompts import VALIDATION_SYSTEM
 from app.services.llm_gateway import LLMGateway
 
+_VALID_CLAIM_STATUSES = {"VERIFIED", "UNVERIFIED", "FLAGGED"}
+
+
+def _normalize_claim_status(value) -> str:
+    if isinstance(value, str) and value.strip().upper() in _VALID_CLAIM_STATUSES:
+        return value.strip().upper()
+    return "UNVERIFIED"
+
 class EvidenceValidatorService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -36,38 +44,50 @@ class EvidenceValidatorService:
         context = {"claims": claims, "evidence": evidence}
         validation = await self.llm.evaluate_json(
             system_prompt=VALIDATION_SYSTEM,
-            user_prompt=str(context)
+            prompt=str(context)
         )
         
         validated_claims = validation.get("claims", [])
-        
+        claim_text_by_id = {str(c["id"]): c["text"] for c in claims}
+
         verified = flagged = unverified = 0
         total_score = 0.0
-        
+        response_claims = []
+
         for vc in validated_claims:
-            status = vc.get("status")
+            claim_id = vc.get("claim_id")
+            status = _normalize_claim_status(vc.get("status"))
             score = vc.get("defense_score", 0.0)
-            
+
             if status == "VERIFIED": verified += 1
             elif status == "FLAGGED": flagged += 1
             else: unverified += 1
             total_score += score
-            
+
             # 4. Update claims table
             await self.db.execute(
                 text("""
-                UPDATE claims 
-                SET status = :status, defense_score = :score 
+                UPDATE claims
+                SET status = :status, defense_score = :score
                 WHERE id = :claim_id
                 """),
-                {"status": status, "score": score, "claim_id": vc.get("claim_id")}
+                {"status": status, "score": score, "claim_id": claim_id}
             )
-            
+
+            response_claims.append({
+                "claim_id": claim_id,
+                "claim_text": claim_text_by_id.get(str(claim_id), ""),
+                "status": status,
+                "evidence_text": vc.get("evidence_text"),
+                "defense_score": score,
+                "issues": vc.get("issues", [])
+            })
+
         await self.db.commit()
-        
+
         total = len(validated_claims)
         overall_score = total_score / total if total > 0 else 0.0
-        
+
         # 5. Return ValidationResponse
         return {
             "document_id": generated_document_id,
@@ -76,7 +96,7 @@ class EvidenceValidatorService:
             "flagged": flagged,
             "unverified": unverified,
             "overall_score": overall_score,
-            "claims": validated_claims,
+            "claims": response_claims,
             "message": "Validation complete."
         }
 

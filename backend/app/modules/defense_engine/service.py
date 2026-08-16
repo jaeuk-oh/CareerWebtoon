@@ -25,11 +25,14 @@ class DefenseEngineService:
         # 2. Focus on FLAGGED and low defense_score claims
         weak_claims = [c for c in claims if c["status"] in ("FLAGGED", "UNVERIFIED") or (c["score"] is not None and c["score"] < 0.6)]
         
-        # 3. Call LLM to generate interview questions
+        # 3. Call LLM to generate interview questions (critic model: this is an
+        # evaluation of weak claims, not creative writing, and proved far more
+        # reliable than the writer model for this batch size)
         context = {"weak_claims": weak_claims}
-        generation = await self.llm.generate_json(
+        generation = await self.llm.evaluate_json(
             system_prompt=DEFENSE_SYSTEM,
-            user_prompt=str(context)
+            prompt=str(context),
+            max_tokens=8192
         )
         
         questions_data = generation.get("questions", [])
@@ -53,7 +56,7 @@ class DefenseEngineService:
             )
             response_questions.append({
                 "id": q_id,
-                "claim_text": next((c["text"] for c in weak_claims if c["id"] == q.get("claim_id")), ""),
+                "claim_text": next((c["text"] for c in weak_claims if str(c["id"]) == str(q.get("claim_id"))), ""),
                 "question": q.get("question"),
                 "difficulty": q.get("difficulty"),
                 "expected_answer_hint": q.get("expected_answer_hint")

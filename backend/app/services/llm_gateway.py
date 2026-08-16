@@ -14,7 +14,7 @@ class LLMGateway:
             api_key=settings.NVIDIA_API_KEY,
             base_url=settings.NVIDIA_API_BASE_URL
         )
-        self.WRITER_MODEL = "mistralai/mistral-medium-3.5-128b"
+        self.WRITER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1"
         self.CRITIC_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
     def _build_messages(self, prompt: str, system_prompt: str = None) -> list[dict]:
