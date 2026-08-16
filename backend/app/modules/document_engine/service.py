@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -6,6 +7,8 @@ from app.core.exceptions import AppException
 from .schemas import GenerateRequest, GeneratedDocResponse
 from .prompts import RESUME_SYSTEM, COVER_LETTER_SYSTEM, CAREER_DESC_SYSTEM, CLAIM_EXTRACT_SYSTEM
 from app.services.llm_gateway import LLMGateway
+
+logger = logging.getLogger(__name__)
 
 
 def _as_uuid_or_none(value) -> str | None:
@@ -108,9 +111,17 @@ class DocumentEngineService:
         # this app (see defense_engine's question-batch generation).
         generated_content = await self.llm.analyze(system_prompt=prompt, prompt=context, max_tokens=3072)
 
-        # 5. Extract claims
-        extraction = await self.llm.evaluate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, prompt=generated_content)
-        claims = extraction.get("claims", [])
+        # 5. Extract claims. A full resume/cover letter can yield enough claims that
+        # the default max_tokens truncates the JSON mid-string (json.loads then
+        # fails with "Unterminated string..."), so give this call more headroom.
+        # If it still fails, the document itself already generated successfully —
+        # save it with no claims rather than discarding real, usable output.
+        try:
+            extraction = await self.llm.evaluate_json(system_prompt=CLAIM_EXTRACT_SYSTEM, prompt=generated_content, max_tokens=4096)
+            claims = extraction.get("claims", [])
+        except Exception as e:
+            logger.error(f"Claim extraction failed, saving document without claims: {e}")
+            claims = []
         
         # 5. Save to generated_documents + claims tables
         doc_id = str(uuid.uuid4())
