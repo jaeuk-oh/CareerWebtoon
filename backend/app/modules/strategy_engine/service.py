@@ -34,11 +34,11 @@ class StrategyEngineService:
             if not job:
                 raise AppException(status_code=404, detail="Job not found")
                 
-            jd_analysis = json.loads(job.jd_analysis) if job.jd_analysis else {}
-            
+            jd_analysis = job.jd_analysis if job.jd_analysis else {}
+
             matches_data = [
                 {
-                    "experience_id": m.experience_id,
+                    "experience_id": str(m.experience_id),
                     "title": m.title,
                     "match_score": m.match_score,
                     "match_type": m.match_type,
@@ -70,8 +70,8 @@ class StrategyEngineService:
             await session.execute(
                 text("""
                     INSERT INTO application_strategies
-                    (id, job_id, user_id, primary_experience_id, secondary_experience_id, gaps, excluded_reasons, strategy_text)
-                    VALUES (:id, :job_id, :user_id, :primary_id, :secondary_id, :gaps, :excluded_reasons, :strategy_text)
+                    (id, job_id, user_id, primary_experience_id, secondary_experience_id, gap_analysis, strategy_text)
+                    VALUES (:id, :job_id, :user_id, :primary_id, :secondary_id, :gap_analysis, :strategy_text)
                 """),
                 {
                     "id": strategy_id,
@@ -79,15 +79,14 @@ class StrategyEngineService:
                     "user_id": user_id,
                     "primary_id": primary_id,
                     "secondary_id": secondary_id,
-                    "gaps": json.dumps(gaps),
-                    "excluded_reasons": json.dumps(excluded_reasons),
+                    "gap_analysis": json.dumps({"gaps": gaps, "excluded_reasons": excluded_reasons}),
                     "strategy_text": strategy_text
                 }
             )
             await session.commit()
-            
+
             # Fetch exp titles for response
-            exp_dict = {m.experience_id: m.title for m in matches}
+            exp_dict = {str(m.experience_id): m.title for m in matches}
             
             return {
                 "id": strategy_id,
@@ -112,7 +111,7 @@ class StrategyEngineService:
                 
             res = await session.execute(
                 text("""
-                    SELECT id, primary_experience_id, secondary_experience_id, gaps, excluded_reasons, strategy_text
+                    SELECT id, primary_experience_id, secondary_experience_id, gap_analysis, strategy_text
                     FROM application_strategies
                     WHERE job_id = :job_id
                     ORDER BY created_at DESC LIMIT 1
@@ -120,17 +119,18 @@ class StrategyEngineService:
                 {"job_id": job_id}
             )
             strategy = res.fetchone()
-            
+
             if not strategy:
                 raise AppException(status_code=404, detail="Strategy not found")
-                
+
+            gap_analysis = strategy.gap_analysis or {}
             return {
                 "id": strategy.id,
                 "job_id": job_id,
                 "primary_experience": {"id": strategy.primary_experience_id},
                 "secondary_experience": {"id": strategy.secondary_experience_id},
-                "gaps": json.loads(strategy.gaps) if strategy.gaps else [],
-                "excluded_reasons": json.loads(strategy.excluded_reasons) if strategy.excluded_reasons else [],
+                "gaps": gap_analysis.get("gaps", []),
+                "excluded_reasons": gap_analysis.get("excluded_reasons", []),
                 "strategy_text": strategy.strategy_text,
                 "message": "Strategy retrieved successfully"
             }

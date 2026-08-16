@@ -21,7 +21,7 @@ class MatchingEngineService:
             job = job_res.fetchone()
             if not job or not job.jd_analysis:
                 raise AppException(status_code=404, detail="Job or JD analysis not found")
-            jd_analysis = json.loads(job.jd_analysis)
+            jd_analysis = job.jd_analysis
             
             # Fetch user experiences
             exp_res = await session.execute(
@@ -43,11 +43,11 @@ class MatchingEngineService:
 
             exp_dict = {}
             for e in experiences:
-                exp_dict[e.id] = {"id": e.id, "title": e.title, "description": e.description, "anchors": []}
+                exp_dict[str(e.id)] = {"id": str(e.id), "title": e.title, "description": e.description, "anchors": []}
             for a in anchors:
-                if a.experience_id in exp_dict:
-                    exp_dict[a.experience_id]["anchors"].append({
-                        "id": a.id, "type": a.anchor_type, "content": a.summary
+                if str(a.experience_id) in exp_dict:
+                    exp_dict[str(a.experience_id)]["anchors"].append({
+                        "id": str(a.id), "type": a.anchor_type, "content": a.summary
                     })
 
             # Build context

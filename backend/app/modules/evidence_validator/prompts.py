@@ -6,5 +6,6 @@ For each claim, evaluates:
 - Is this a vague/generic statement or specific?
 Scores defense_score 0-1 (how well can this be defended?)
 status: VERIFIED (has evidence), FLAGGED (claim without evidence), UNVERIFIED (cannot determine)
-Return a JSON structure matching the required schema.
+Returns a JSON structure:
+{"claims": [{"claim_id": "...", "status": "VERIFIED|FLAGGED|UNVERIFIED", "defense_score": 0.0}]}
 """

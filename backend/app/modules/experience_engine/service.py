@@ -110,13 +110,12 @@ class ExperienceEngineService:
         anchors_list = anchors_res.get("anchors", [])
         for anc in anchors_list:
             anc_id = str(uuid.uuid4())
-            skills_str = json.dumps(anc.get("skills", []))
             await self.db.execute(insert_anchor_query, {
                 "id": anc_id,
                 "exp_id": experience_id,
                 "anchor_type": anc.get("anchor_type"),
                 "summary": anc.get("summary"),
-                "skills": skills_str
+                "skills": anc.get("skills", [])
             })
             anchor_items.append({
                 "id": anc_id,
@@ -146,7 +145,8 @@ class ExperienceEngineService:
             
         query = text("SELECT * FROM experience_3c4p WHERE experience_id = :exp_id")
         result = await self.db.execute(query, {"exp_id": experience_id})
-        return dict(result.mappings().first()) if result.mappings().first() else None
+        row = result.mappings().first()
+        return dict(row) if row else None
         
     async def get_evidence(self, experience_id: str, user_id: str) -> list[dict]:
         # Verify ownership
