@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Briefcase, User, Menu, X, ShieldCheck, Database, FileEdit, LayoutTemplate } from 'lucide-react';
+import { Briefcase, User, Menu, X, ShieldCheck, Database, FileEdit } from 'lucide-react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { LoginModal } from './LoginModal';
@@ -15,10 +15,9 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentView,
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { id: 'dashboard' as ViewState, label: '워크스페이스', icon: Database },
-    { id: 'pipeline' as ViewState, label: '지원 파이프라인', icon: ShieldCheck },
-    { id: 'editor' as ViewState, label: '코파일럿 에디터', icon: FileEdit },
-    { id: 'portfolio' as ViewState, label: '포트폴리오 전략', icon: LayoutTemplate },
+    { id: 'dashboard' as ViewState, label: '내 워크스페이스', icon: Database },
+    { id: 'pipeline' as ViewState, label: '새 지원 시작', icon: ShieldCheck },
+    { id: 'editor' as ViewState, label: '지원서 작성', icon: FileEdit },
   ];
 
   return (
@@ -41,7 +40,7 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentView,
                   CareerCraft
                 </span>
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider hidden sm:block">
-                  AI Career Copilot
+                  AI 취업 코파일럿
                 </span>
               </div>
             </div>
@@ -74,10 +73,10 @@ export const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentView,
           {/* Right Action Bar */}
           <div className="flex items-center gap-3">
             {/* Defensible Score Indicator */}
-            {currentView !== 'landing' && (
+            {currentView !== 'landing' && documentDraft.defenseScore > 0 && (
               <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/60 rounded-full text-xs font-bold text-emerald-800">
                 <ShieldCheck size={14} className="text-emerald-600 animate-pulse" />
-                <span>방어 점수: <strong className="text-emerald-700">{documentDraft.defenseScore || 87}점</strong></span>
+                <span>방어 점수: <strong className="text-emerald-700">{documentDraft.defenseScore}점</strong></span>
               </div>
             )}
 

@@ -26,4 +26,8 @@ export interface DefenseChatMessage {
   text: string;
   timestamp: string;
   scoreImpact?: number;
+  // Present on AI-generated question messages so a later reply can be graded
+  // against the right claim (see AppContext.sendDefenseMessage).
+  claimText?: string;
+  expectedAnswerHint?: string;
 }

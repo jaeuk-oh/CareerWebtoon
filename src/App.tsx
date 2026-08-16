@@ -6,7 +6,6 @@ import LandingView from './pages/Landing';
 import DashboardView from './pages/Dashboard';
 import PipelineView from './pages/Pipeline';
 import EditorView from './pages/Editor';
-import PortfolioView from './pages/Portfolio';
 import { AppProvider } from './context/AppContext';
 import { ToastContainer } from './components/ToastContainer';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -33,8 +32,8 @@ function AppContent() {
   const handleNavigate = (view: ViewState) => {
     if (view === currentView) return;
 
-    if (view === 'pipeline') setLoadingMsg('Candidate Vault를 불러오는 중...');
-    else if (view === 'editor') setLoadingMsg('Evidence Validator 실행 중...');
+    if (view === 'pipeline') setLoadingMsg('내 경험을 불러오는 중...');
+    else if (view === 'editor') setLoadingMsg('근거 검증을 준비하는 중...');
     else setLoadingMsg('불러오는 중...');
 
     setIsLoading(true);
@@ -54,7 +53,6 @@ function AppContent() {
       {currentView === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
       {currentView === 'pipeline' && <PipelineView onNavigate={handleNavigate} />}
       {currentView === 'editor' && <EditorView onNavigate={handleNavigate} />}
-      {currentView === 'portfolio' && <PortfolioView onNavigate={handleNavigate} />}
 
       <ToastContainer />
       <ConfirmDialog />

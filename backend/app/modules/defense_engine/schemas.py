@@ -16,3 +16,14 @@ class DefenseResponse(BaseModel):
     questions: List[DefenseQuestion]
     flagged_claims_count: int
     message: str
+
+class AnswerFeedbackRequest(BaseModel):
+    question: str
+    claim_text: str
+    expected_answer_hint: Optional[str] = None
+    user_answer: str
+
+class AnswerFeedbackResponse(BaseModel):
+    feedback: str
+    is_strong: bool
+    score_delta: int

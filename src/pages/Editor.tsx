@@ -8,12 +8,9 @@ import {
   Send,
   ShieldAlert,
   Copy,
-  Sparkles,
   FileDown,
   Save,
   Check,
-  Zap,
-  TrendingUp,
   Loader2,
   FileQuestion
 } from 'lucide-react';
@@ -50,6 +47,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isGeneratingDefense, setIsGeneratingDefense] = useState(false);
+  const [isSendingAnswer, setIsSendingAnswer] = useState(false);
 
   const activePipeline = pipelines.find((p) => p.id === activePipelineId) || pipelines[0];
   const generatedDocId = documentDraft.generatedDocIds?.[docType];
@@ -64,7 +62,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   };
 
   const handleSaveFinal = () => {
-    showToast('지원서 및 검증 결과가 성공적으로 저장되었습니다.', 'success');
+    showToast('작성한 내용은 브라우저에 자동으로 저장되어 있습니다.', 'success');
   };
 
   const handleCopyText = () => {
@@ -73,14 +71,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     setCopied(true);
     showToast('클립보드에 지원서 내용이 복사되었습니다.', 'success');
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleAiPolish = () => {
-    const current = getCurrentText();
-    if (!current) return;
-    const polished = current + '\n\n[AI 3C4P 앵커링 강화: 지원자의 수치 검증 근거가 서두에 더욱 명확하게 정제되었습니다.]';
-    updateDocumentContent(docType, polished);
-    showToast('AI가 문장을 다듬고 3C4P 앵커를 강화했습니다.', 'success');
   };
 
   const handleGenerateDocument = async () => {
@@ -127,15 +117,17 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleQuickChipClick = (chipText: string) => {
-    sendDefenseMessage(chipText);
-  };
-
-  const handleSendMessage = (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!userInputMessage.trim()) return;
-    sendDefenseMessage(userInputMessage);
+    if (!userInputMessage.trim() || isSendingAnswer) return;
+    const text = userInputMessage;
     setUserInputMessage('');
+    setIsSendingAnswer(true);
+    try {
+      await sendDefenseMessage(text);
+    } finally {
+      setIsSendingAnswer(false);
+    }
   };
 
   const getCurrentText = () => {
@@ -161,7 +153,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
             <ShieldCheck size={16} className="text-emerald-600" />
-            <span>Target: <strong className="text-slate-900">{activePipeline?.targetCompany || '목표 기업'}</strong> ({activePipeline?.targetRole || '기획자'})</span>
+            <span>지원 기업: <strong className="text-slate-900">{activePipeline?.targetCompany || '목표 기업'}</strong> ({activePipeline?.targetRole || '지원 직무'})</span>
           </span>
           <span className="text-slate-300">|</span>
           <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
@@ -237,13 +229,6 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                 {isGeneratingDoc ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
                 <span>{isGeneratingDoc ? 'AI 초안 생성 중...' : hasGeneratedDoc ? 'AI 초안 다시 생성' : 'AI 초안 생성'}</span>
               </button>
-              <button
-                onClick={handleAiPolish}
-                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-              >
-                <Sparkles size={14} className="text-emerald-600" />
-                <span>✨ AI 3C4P 문체 다듬기</span>
-              </button>
             </div>
           </div>
 
@@ -305,16 +290,16 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                 </h4>
                 <div className="space-y-3 text-xs">
                   <div className="p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-200">
-                    <span className="font-bold text-emerald-900 block mb-1 text-[11px]">PRIMARY STRATEGY</span>
+                    <span className="font-bold text-emerald-900 block mb-1 text-[11px]">핵심 전략</span>
                     <p className="text-slate-900 font-bold">
-                      {activePipeline?.primaryStrategy || '3C4P 기반 대표 경험을 자소서 1번 문항에 배치'}
+                      {activePipeline?.primaryStrategy || '경험을 등록하고 지원을 시작하면 AI가 핵심 전략을 만들어줍니다.'}
                     </p>
                   </div>
 
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="font-bold text-slate-600 block mb-1 text-[11px]">SECONDARY STRATEGY</span>
+                    <span className="font-bold text-slate-600 block mb-1 text-[11px]">보완할 점</span>
                     <p className="text-slate-800">
-                      {activePipeline?.secondaryStrategy || '데이터 분석 수치로 보조 역량 증명'}
+                      {activePipeline?.secondaryStrategy || '아직 보완 제안이 없습니다.'}
                     </p>
                   </div>
                 </div>
@@ -377,8 +362,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                           </p>
                         ) : (
                           evidenceValidation.claims.map((claim) => {
-                            const isVerified = claim.status === 'verified';
-                            const isFlagged = claim.status === 'flagged';
+                            const isVerified = claim.status.toUpperCase() === 'VERIFIED';
+                            const isFlagged = claim.status.toUpperCase() === 'FLAGGED';
                             return (
                               <div
                                 key={claim.claim_id}
@@ -439,17 +424,17 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                 <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-xs">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                      <ShieldAlert size={16} /> AI 모의 압박 면접 방어력
+                      <ShieldAlert size={16} /> 모의 면접 방어력
                     </span>
                     <span className="text-sm font-bold text-emerald-400">
-                      {documentDraft.defenseScore || 87} / 100점
+                      {documentDraft.defenseScore > 0 ? `${documentDraft.defenseScore} / 100점` : '검증 전'}
                     </span>
                   </div>
                   <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                     <motion.div
                       className="h-full bg-emerald-500 rounded-full"
                       initial={{ width: 0 }}
-                      animate={{ width: `${documentDraft.defenseScore || 87}%` }}
+                      animate={{ width: `${documentDraft.defenseScore}%` }}
                       transition={{ duration: 0.5 }}
                     ></motion.div>
                   </div>
@@ -462,35 +447,20 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                   className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
                 >
                   {isGeneratingDefense ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
-                  <span>{isGeneratingDefense ? '압박 질문 생성 중...' : 'AI 실전 압박 질문 생성'}</span>
+                  <span>{isGeneratingDefense ? '예상 질문 만드는 중...' : 'AI 예상 질문 만들기'}</span>
                 </button>
                 {!hasGeneratedDoc && (
                   <p className="text-[11px] text-slate-400 text-center -mt-2">
-                    먼저 상단에서 AI 초안을 생성하면 압박 질문을 만들 수 있어요.
+                    먼저 상단에서 AI 초안을 생성하면 예상 질문을 만들 수 있어요.
                   </p>
                 )}
 
-                {/* Response Recommendation Chips */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-slate-500">빠른 답변 모범 칩:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      '3C4P 수치 산출 근거 설명하기',
-                      '내 핵심 역할(Action) 강조',
-                      '팀원 설득 및 스크럼 과제'
-                    ].map((chip, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleQuickChipClick(chip)}
-                        className="text-[11px] bg-white hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors font-bold"
-                      >
-                        + {chip}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Chat Timeline */}
+                {defenseMessages.length === 0 && hasGeneratedDoc && (
+                  <p className="text-[11px] text-slate-400 text-center py-2">
+                    위 버튼을 눌러 AI 예상 질문을 만들면 여기서 답변 연습을 할 수 있어요.
+                  </p>
+                )}
                 <div className="space-y-3">
                   {defenseMessages.map((msg) => (
                     <div
@@ -517,6 +487,16 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                       </div>
                     </div>
                   ))}
+                  {isSendingAnswer && (
+                    <div className="flex gap-2.5">
+                      <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold bg-emerald-600 text-white">
+                        <Bot size={14} />
+                      </div>
+                      <div className="p-3 rounded-2xl text-xs leading-relaxed bg-white border border-slate-200/80 text-slate-500 rounded-tl-none shadow-2xs flex items-center gap-1.5">
+                        <Loader2 size={13} className="animate-spin" /> 답변을 평가하는 중...
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -530,14 +510,16 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                   type="text"
                   value={userInputMessage}
                   onChange={(e) => setUserInputMessage(e.target.value)}
-                  placeholder="면접관 압박 질문에 답변해보기..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900"
+                  placeholder="면접 예상 질문에 답변해보기..."
+                  disabled={isSendingAnswer}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 disabled:opacity-60"
                 />
                 <button
                   type="submit"
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-900 hover:text-emerald-600 p-1"
+                  disabled={isSendingAnswer}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-900 hover:text-emerald-600 p-1 disabled:opacity-40"
                 >
-                  <Send size={16} />
+                  {isSendingAnswer ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 </button>
               </div>
             </form>

@@ -189,6 +189,12 @@ export interface DefenseResponse {
   message: string;
 }
 
+export interface AnswerFeedbackResponse {
+  feedback: string;
+  is_strong: boolean;
+  score_delta: number;
+}
+
 // Backend doc_type values differ from the frontend's docType union.
 export type FrontendDocType = 'resume' | 'career' | 'coverLetter';
 const DOC_TYPE_TO_BACKEND: Record<FrontendDocType, string> = {
@@ -242,5 +248,11 @@ export const api = {
   defense: {
     generate: (generatedDocumentId: string) =>
       post<DefenseResponse>('/defense/defense/', { generated_document_id: generatedDocumentId }),
+    answerFeedback: (data: {
+      question: string;
+      claim_text: string;
+      expected_answer_hint?: string;
+      user_answer: string;
+    }) => post<AnswerFeedbackResponse>('/defense/defense/answer', data),
   },
 };

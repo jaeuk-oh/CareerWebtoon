@@ -9,31 +9,40 @@ import {
   AlertTriangle,
   Loader2,
   Sparkles,
-  Zap,
   Briefcase,
-  Layers,
   ChevronRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { NavigationHeader } from '../components/NavigationHeader';
+import { JDAnalysisResponse, MatchResponse, StrategyResponse } from '../lib/api';
 
 interface PipelineViewProps {
   onNavigate: (view: ViewState) => void;
 }
 
+const MATCH_TYPE_LABEL: Record<string, { label: string; className: string }> = {
+  pilsal: { label: '강력 매칭', className: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  mipsal: { label: '보완 필요', className: 'bg-amber-50 text-amber-800 border-amber-200' },
+  bilsal: { label: '매칭 약함', className: 'bg-slate-100 text-slate-600 border-slate-200' }
+};
+
 export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
-  const { experiences, createPipeline, showToast } = useApp();
+  const { experiences, analyzeJob, matchExperiences, generateStrategyForJob, finalizePipeline, showToast } = useApp();
 
   const [step, setStep] = useState(1);
   const [targetCompany, setTargetCompany] = useState('');
   const [targetRole, setTargetRole] = useState('');
   const [jdText, setJdText] = useState('');
 
-  const [selectedPrimaryExpId, setSelectedPrimaryExpId] = useState<string>(experiences[0]?.id || '');
-  const [selectedSecondaryExpId, setSelectedSecondaryExpId] = useState<string>(experiences[1]?.id || '');
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  const [jd, setJd] = useState<JDAnalysisResponse | null>(null);
+  const [match, setMatch] = useState<MatchResponse | null>(null);
+  const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
 
   const SAMPLE_JDS = [
     {
@@ -58,35 +67,60 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
     setTargetCompany(sample.company);
     setTargetRole(sample.role);
     setJdText(sample.jd);
-    showToast(`'${sample.company}' 샘플 JD가 입력되었습니다.`, 'info');
+    showToast(`'${sample.company}' 샘플 공고가 입력되었습니다.`, 'info');
   };
 
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = async () => {
     if (!jdText.trim()) {
-      showToast('지원하시려는 채용 공고(JD)를 입력해주세요.', 'warning');
+      showToast('지원하시려는 채용 공고를 입력해주세요.', 'warning');
       return;
     }
-    setStep(2);
-  };
-
-  const handleCreateAndNavigate = async () => {
-    setCreateError(null);
-    setStep(4);
+    if (isAnalyzing) return;
+    setAnalyzeError(null);
+    setIsAnalyzing(true);
     try {
-      await createPipeline(targetCompany, targetRole, jdText);
-      onNavigate('editor');
+      const jdResult = await analyzeJob(targetCompany, targetRole, jdText);
+      const matchResult = await matchExperiences(jdResult.id);
+      setJd(jdResult);
+      setMatch(matchResult);
+      setStep(2);
     } catch (err) {
       console.error(err);
-      setCreateError('파이프라인 생성에 실패했습니다. JD 내용을 확인하고 다시 시도해주세요.');
-      showToast('파이프라인 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+      setAnalyzeError('채용 공고 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      showToast('채용 공고 분석에 실패했습니다.', 'error');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
+  const handleBuildStrategy = async () => {
+    if (!jd || isPlanning) return;
+    setIsPlanning(true);
+    try {
+      const strategyResult = await generateStrategyForJob(jd.id);
+      setStrategy(strategyResult);
+      setStep(3);
+    } catch (err) {
+      console.error(err);
+      showToast('지원 전략 수립에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  const handleFinalize = () => {
+    if (!jd || !match || !strategy) return;
+    finalizePipeline(jd, targetCompany, targetRole, jdText, match, strategy);
+    onNavigate('editor');
+  };
+
+  const sortedMatches = match ? [...match.matches].sort((a, b) => b.match_score - a.match_score) : [];
+  const coveragePercent = match ? Math.round((match.coverage_score || 0) * 100) : 0;
+
   const stepsList = [
-    { num: 1, label: 'JD 및 정보' },
-    { num: 2, label: '3C4P 매칭' },
-    { num: 3, label: '지원 전략' },
-    { num: 4, label: '문서 생성' }
+    { num: 1, label: '공고 입력' },
+    { num: 2, label: '경험 매칭' },
+    { num: 3, label: '지원 전략' }
   ];
 
   return (
@@ -124,7 +158,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                 >
                   {s.label}
                 </span>
-                {s.num < 4 && <ChevronRight size={14} className="text-slate-300 hidden sm:inline" />}
+                {s.num < 3 && <ChevronRight size={14} className="text-slate-300 hidden sm:inline" />}
               </div>
             ))}
           </div>
@@ -141,18 +175,25 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                   <FileSearch size={20} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">채용 공고 (JD) 및 지원 정보 입력</h2>
+                  <h2 className="text-xl font-bold text-slate-900">채용 공고 및 지원 정보 입력</h2>
                   <p className="text-xs text-slate-500 font-medium">
-                    Candidate Vault 경험 데이터와 대조하여 3C4P 최적 지원 전략을 자동 분석합니다.
+                    등록해둔 내 경험과 대조해 최적의 지원 전략을 자동 분석합니다.
                   </p>
                 </div>
               </div>
+
+              {experiences.length === 0 && (
+                <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                  <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
+                  <span>아직 등록된 경험이 없습니다. 워크스페이스에서 먼저 경험을 등록해야 매칭 결과가 나옵니다.</span>
+                </div>
+              )}
 
               {/* Preset Chips */}
               <div className="mb-5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-slate-700 font-bold flex items-center gap-1.5">
-                    <Sparkles size={14} className="text-emerald-600" /> 샘플 JD 1-Click 자동 채우기:
+                    <Sparkles size={14} className="text-emerald-600" /> 샘플 공고 1-Click 자동 채우기:
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -194,7 +235,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
-                    채용 공고 상세 (JD Text) *
+                    채용 공고 상세 *
                   </label>
                   <textarea
                     className="w-full h-44 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-900 leading-relaxed focus:outline-none focus:border-slate-900 resize-none font-sans"
@@ -205,20 +246,28 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
+              {analyzeError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+                  {analyzeError}
+                </div>
+              )}
+
               <div className="flex justify-end">
                 <button
                   onClick={handleStartAnalysis}
-                  className="bg-slate-900 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-xs transition-all text-xs"
+                  disabled={isAnalyzing}
+                  className="bg-slate-900 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-xs transition-all text-xs"
                 >
-                  <span>JD 3C4P 매칭 분석 시작</span>
-                  <ArrowRight size={16} />
+                  {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <span>공고 분석 및 경험 매칭 시작</span>}
+                  {!isAnalyzing && <ArrowRight size={16} />}
+                  {isAnalyzing && <span>분석 중...</span>}
                 </button>
               </div>
             </motion.div>
           )}
 
-          {/* STEP 2: MATCHING RESULT */}
-          {step === 2 && (
+          {/* STEP 2: MATCHING RESULT (real data) */}
+          {step === 2 && match && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
@@ -226,78 +275,48 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                     <Crosshair size={20} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">JD × Candidate 3C4P 매칭 분석</h2>
+                    <h2 className="text-xl font-bold text-slate-900">공고 × 내 경험 매칭 결과</h2>
                     <p className="text-xs text-slate-500 font-medium">
-                      Candidate Vault에 저장된 {experiences.length}개 경험 자산과 JD 요건을 매칭했습니다.
+                      등록된 경험 {experiences.length}개와 채용 공고 요건을 대조했습니다.
                     </p>
                   </div>
                 </div>
-                <span className="text-2xl font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200">
-                  94% Match
+                <span className="text-2xl font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 flex-shrink-0">
+                  {coveragePercent}% 커버리지
                 </span>
               </div>
 
-              <div className="space-y-4 mb-6">
-                {/* Primary Match Card */}
-                <div className="border border-emerald-500/80 rounded-2xl overflow-hidden shadow-2xs">
-                  <div className="p-4 bg-emerald-50/80 flex justify-between items-center border-b border-emerald-200">
-                    <div>
-                      <span className="text-[10px] font-bold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-300 inline-block mb-1">
-                        🏆 필살기 매칭 (대표 경험 앵커)
-                      </span>
-                      <p className="text-slate-900 font-bold text-base">
-                        {experiences[0]?.title || '서류 점검 자동화 및 프로세스 기획'}
-                      </p>
-                    </div>
+              <div className="space-y-3 mb-6 max-h-96 overflow-y-auto pr-1">
+                {sortedMatches.length === 0 ? (
+                  <div className="p-6 border border-dashed border-slate-200 rounded-2xl text-center text-xs text-slate-500">
+                    매칭할 수 있는 경험이 없습니다. 워크스페이스에서 경험을 등록하고 "AI 분석"으로 구조화한 뒤 다시 시도해주세요.
                   </div>
-
-                  <div className="p-4 bg-white grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-1">
-                        <Zap size={13} className="text-emerald-600" /> 3C4P 경험 구조
-                      </h4>
-                      <ul className="space-y-1.5 text-slate-800">
-                        <li>
-                          <strong className="text-slate-500">Customer:</strong>{' '}
-                          {experiences[0]?.c3p4.customer || 'B2B 사용자'}
-                        </li>
-                        <li>
-                          <strong className="text-slate-500">Problem:</strong>{' '}
-                          {experiences[0]?.c3p4.problem || '수작업 병목 7일 소요'}
-                        </li>
-                        <li>
-                          <strong className="text-slate-500">Action:</strong>{' '}
-                          {experiences[0]?.c3p4.action || '룰셋 기획 및 자동화'}
-                        </li>
-                      </ul>
-                    </div>
-
-                    <div className="border-l border-slate-100 pl-4">
-                      <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-1">
-                        <CheckCircle2 size={13} className="text-emerald-600" /> 수치 검증 근거 (Evidence)
-                      </h4>
-                      <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/80">
-                        <p className="font-bold text-emerald-900">
-                          {experiences[0]?.c3p4.product || '소요시간 71.4% 단축 (7일 → 2일)'}
-                        </p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">
-                          Source: {experiences[0]?.evidenceSource || '기획서 v1.2'}
-                        </p>
+                ) : (
+                  sortedMatches.map((m, idx) => {
+                    const typeInfo = MATCH_TYPE_LABEL[m.match_type] || {
+                      label: m.match_type,
+                      className: 'bg-slate-100 text-slate-600 border-slate-200'
+                    };
+                    return (
+                      <div key={`${m.experience_id}-${m.anchor_id ?? idx}`} className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                        <div className="p-4 bg-slate-50/80 flex justify-between items-center border-b border-slate-100 gap-3">
+                          <div className="min-w-0">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border inline-block mb-1 ${typeInfo.className}`}>
+                              {typeInfo.label}{m.anchor_type ? ` · ${m.anchor_type}` : ''}
+                            </span>
+                            <p className="text-slate-900 font-bold text-sm truncate">{m.experience_title}</p>
+                          </div>
+                          <span className="text-sm font-bold text-slate-700 flex-shrink-0">
+                            {Math.round(m.match_score * 100)}점
+                          </span>
+                        </div>
+                        <div className="p-4 bg-white text-xs text-slate-700 leading-relaxed">
+                          {m.rationale}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Gap Analysis Box */}
-                <div className="p-4 border border-amber-200 bg-amber-50/70 rounded-2xl flex items-start gap-3">
-                  <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-bold text-amber-900 text-xs">Gap Analysis (AI 검증 결과)</h4>
-                    <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
-                      JD 우대사항 중 '도메인 특화 알고리즘 경험'은 수치 근거가 다소 부족합니다. 과장 대신 3C4P 기반의 학습 능력과 프로세스 개선 역량을 강조하세요.
-                    </p>
-                  </div>
-                </div>
+                    );
+                  })
+                )}
               </div>
 
               <div className="flex justify-between items-center pt-3 border-t border-slate-100">
@@ -308,27 +327,29 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                   이전 단계
                 </button>
                 <button
-                  onClick={() => setStep(3)}
-                  className="bg-slate-900 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 text-xs shadow-xs transition-all"
+                  onClick={handleBuildStrategy}
+                  disabled={isPlanning}
+                  className="bg-slate-900 hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 text-xs shadow-xs transition-all"
                 >
-                  <span>지원 전략 수립하기</span>
-                  <ArrowRight size={16} />
+                  {isPlanning ? <Loader2 size={16} className="animate-spin" /> : null}
+                  <span>{isPlanning ? '전략 수립 중...' : '지원 전략 수립하기'}</span>
+                  {!isPlanning && <ArrowRight size={16} />}
                 </button>
               </div>
             </motion.div>
           )}
 
-          {/* STEP 3: STRATEGY RECOMMENDATION */}
-          {step === 3 && (
+          {/* STEP 3: STRATEGY (real data) */}
+          {step === 3 && strategy && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-slate-900 text-emerald-400 rounded-xl flex items-center justify-center font-bold shadow-xs">
                   <ShieldCheck size={20} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">면접 방어 최적 지원 전략</h2>
+                  <h2 className="text-xl font-bold text-slate-900">면접 방어 지원 전략</h2>
                   <p className="text-xs text-slate-500 font-medium">
-                    지원서 자소서 1번 문항 및 이력서 대표 성과로 배치할 파이프라인 전략입니다.
+                    지원서에 배치할 대표 경험과 보완할 점을 AI가 정리했습니다.
                   </p>
                 </div>
               </div>
@@ -336,27 +357,31 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
               <div className="space-y-4 mb-6">
                 <div className="border border-slate-900 rounded-2xl p-5 bg-slate-900 text-white shadow-md">
                   <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2.5 py-1 rounded-md mb-2 inline-block border border-emerald-800">
-                    PRIMARY STRATEGY (대표 경험)
+                    핵심 전략
                   </span>
-                  <h3 className="text-base font-bold mb-2">
-                    {experiences.find(e => e.id === selectedPrimaryExpId)?.title || experiences[0]?.title}를 대표 앵커로 배치
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    채용 공고 핵심 역량과 94% 일치합니다. 자기소개서 1번 문항 상단에 3C4P 수치와 함께 전면 배치하여 첫인상을 압도합니다.
+                  {strategy.primary_experience?.title && (
+                    <h3 className="text-base font-bold mb-2 flex items-center gap-1.5">
+                      <Briefcase size={15} className="text-emerald-400 flex-shrink-0" />
+                      {strategy.primary_experience.title}
+                    </h3>
+                  )}
+                  <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {strategy.strategy_text}
                   </p>
                 </div>
 
-                <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 shadow-2xs">
-                  <span className="text-[10px] font-bold text-slate-600 bg-slate-200 px-2.5 py-1 rounded-md mb-2 inline-block">
-                    SECONDARY STRATEGY (수치 검증 보조)
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900 mb-2">
-                    {experiences.find(e => e.id === selectedSecondaryExpId)?.title || experiences[1]?.title}로 데이터 성과 보조
-                  </h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    데이터 분석 능력 및 온보딩 이탈 개선 경험을 포트폴리오 슬라이드 2번에 보조로 배치합니다.
-                  </p>
-                </div>
+                {strategy.gaps.length > 0 && (
+                  <div className="p-4 border border-amber-200 bg-amber-50/70 rounded-2xl space-y-2.5">
+                    <h4 className="font-bold text-amber-900 text-xs flex items-center gap-1.5">
+                      <AlertTriangle size={15} /> 보완이 필요한 부분
+                    </h4>
+                    {strategy.gaps.map((g, idx) => (
+                      <div key={idx} className="text-xs text-amber-800 leading-relaxed">
+                        <strong className="text-amber-900">{g.competency}:</strong> {g.suggestion}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between items-center pt-3 border-t border-slate-100">
@@ -367,43 +392,13 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                   이전 단계
                 </button>
                 <button
-                  onClick={handleCreateAndNavigate}
+                  onClick={handleFinalize}
                   className="bg-slate-900 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 text-xs shadow-xs transition-all"
                 >
-                  <span>파이프라인 생성 및 에디터 이동</span>
+                  <span>지원 시작하고 서류 작성하러 가기</span>
                   <ArrowRight size={16} />
                 </button>
               </div>
-            </motion.div>
-          )}
-
-          {/* STEP 4: GENERATING ANIMATION */}
-          {step === 4 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
-              {createError ? (
-                <>
-                  <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-                  <h2 className="text-xl font-bold text-slate-900 mb-1">파이프라인 생성에 실패했습니다</h2>
-                  <p className="text-xs text-slate-500 font-medium mb-5 max-w-sm mx-auto">{createError}</p>
-                  <button
-                    onClick={() => {
-                      setCreateError(null);
-                      setStep(3);
-                    }}
-                    className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-xs"
-                  >
-                    다시 시도하기
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Loader2 className="w-12 h-12 text-slate-900 animate-spin mx-auto mb-4" />
-                  <h2 className="text-xl font-bold text-slate-900 mb-1">지원 전략 문서 생성 중...</h2>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Evidence Validator가 3C4P 앵커 수치 근거의 정합성을 검증하고 있습니다.
-                  </p>
-                </>
-              )}
             </motion.div>
           )}
         </div>
