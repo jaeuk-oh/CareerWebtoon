@@ -54,10 +54,14 @@ class MatchingEngineService:
             context = f"Job Requirements:\\n{json.dumps(jd_analysis.get('requirements', []), ensure_ascii=False)}\\n\\n"
             context += f"Experiences:\\n{json.dumps(list(exp_dict.values()), ensure_ascii=False)}"
 
-            # Call LLM (critic model, used for evaluation-style tasks)
+            # Call LLM (critic model, used for evaluation-style tasks). Several
+            # experiences x anchors can produce enough match entries that the
+            # default max_tokens truncates the JSON mid-string — same failure
+            # mode already fixed in document generation/evidence validation.
             match_result = await self.llm.evaluate_json(
                 prompt=context,
-                system_prompt=MATCHING_SYSTEM
+                system_prompt=MATCHING_SYSTEM,
+                max_tokens=4096
             )
 
             # Save matches

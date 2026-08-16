@@ -49,10 +49,12 @@ class StrategyEngineService:
             context = f"Job Requirements:\\n{json.dumps(jd_analysis.get('requirements', []), ensure_ascii=False)}\\n\\n"
             context += f"Match Results:\\n{json.dumps(matches_data, ensure_ascii=False)}"
 
-            # 2. Call LLM (critic model, used for evaluation-style tasks)
+            # 2. Call LLM (critic model, used for evaluation-style tasks). Same
+            # truncation risk as matching/validation — give it real headroom.
             strategy_result = await self.llm.evaluate_json(
                 prompt=context,
-                system_prompt=STRATEGY_SYSTEM
+                system_prompt=STRATEGY_SYSTEM,
+                max_tokens=4096
             )
 
             primary_id = strategy_result.get("primary_experience_id")
