@@ -1,62 +1,43 @@
 import React, { useState } from 'react';
 import {
-  Plus,
-  LayoutDashboard,
-  Database,
-  FileText,
+  ArrowRight,
   CheckCircle2,
+  Database,
+  FolderPlus,
+  Plus,
   ShieldCheck,
   Trash2,
-  FolderPlus,
-  ArrowRight,
-  Search,
-  Edit3,
-  Sparkles,
-  TrendingUp,
-  SlidersHorizontal,
-  ChevronRight
+  TrendingUp
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { ExperienceModal } from '../components/ExperienceModal';
-import { NavigationHeader } from '../components/NavigationHeader';
-import { Experience } from '../types/experience';
+import { Badge, Button, Card, CircularGauge, EmptyState, SectionHeading, cn } from '../components/ui';
+import { JobPipeline } from '../types/job';
 
 interface DashboardViewProps {
   onNavigate: (view: ViewState) => void;
 }
 
+// Real pipeline progress, derived from the status the backend actually reports.
+// This used to be three literal `done: true` flags, so every application showed
+// as fully complete regardless of how far it had got.
+const STATUS_ORDER: JobPipeline['status'][] = ['jd_analysis', 'matching', 'strategy', 'editor', 'defense'];
+const PIPELINE_STEPS: { key: JobPipeline['status']; label: string }[] = [
+  { key: 'jd_analysis', label: '공고 분석' },
+  { key: 'matching', label: '경험 매칭' },
+  { key: 'strategy', label: '전략 추천' }
+];
+const hasReached = (status: JobPipeline['status'], step: JobPipeline['status']) =>
+  STATUS_ORDER.indexOf(status) >= STATUS_ORDER.indexOf(step);
+
 const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
-  const {
-    user,
-    experiences,
-    experiencesLoading,
-    pipelines,
-    deleteExperience,
-    deletePipeline,
-    setActivePipelineId,
-    clearAllData,
-    requestConfirm
-  } = useApp();
+  const { user, experiences, experiencesLoading, pipelines, deletePipeline, setActivePipelineId, requestConfirm } =
+    useApp();
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'vault' | 'history'>('dashboard');
   const [isExpModalOpen, setIsExpModalOpen] = useState(false);
-  const [editingExperience, setEditingExperience] = useState<Experience | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const handleOpenEditExp = (exp: Experience, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingExperience(exp);
-    setIsExpModalOpen(true);
-  };
-
-  const handleOpenCreateExp = () => {
-    setEditingExperience(null);
-    setIsExpModalOpen(true);
-  };
-
-  const handleOpenPipeline = (pipelineId: string) => {
+  const openPipeline = (pipelineId: string) => {
     setActivePipelineId(pipelineId);
     onNavigate('editor');
   };
@@ -71,504 +52,193 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     });
   };
 
-  const handleDeleteExperience = (id: string, title: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    requestConfirm({
-      title: '경험을 삭제할까요?',
-      message: `'${title}' 경험이 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`,
-      confirmLabel: '삭제하기',
-      onConfirm: () => deleteExperience(id)
-    });
-  };
-
-  const handleClearAllData = () => {
-    requestConfirm({
-      title: '모든 데이터를 초기화할까요?',
-      message: '경험, 지원 내역, 작성 중인 문서를 포함한 모든 데이터가 영구적으로 삭제됩니다.',
-      confirmLabel: '전체 초기화',
-      onConfirm: clearAllData
-    });
-  };
-
-  const filteredExperiences = experiences.filter((exp) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      exp.title.toLowerCase().includes(query) ||
-      exp.organization.toLowerCase().includes(query) ||
-      exp.c3p4.customer.toLowerCase().includes(query) ||
-      exp.c3p4.problem.toLowerCase().includes(query) ||
-      exp.c3p4.action.toLowerCase().includes(query) ||
-      exp.c3p4.product.toLowerCase().includes(query)
-    );
-  });
+  // Average of the real coverage scores the matching engine returned for each job.
+  const averageCoverage =
+    pipelines.length > 0
+      ? Math.round(pipelines.reduce((sum, p) => sum + (p.matchScore || 0), 0) / pipelines.length)
+      : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <NavigationHeader currentView="dashboard" onNavigate={onNavigate} />
+    <div className="space-y-6">
+      <ExperienceModal isOpen={isExpModalOpen} onClose={() => setIsExpModalOpen(false)} />
 
-      <ExperienceModal
-        isOpen={isExpModalOpen}
-        onClose={() => {
-          setIsExpModalOpen(false);
-          setEditingExperience(null);
-        }}
-        editingExp={editingExperience}
-      />
+      {/* Greeting */}
+      <Card className="flex flex-col justify-between gap-5 md:flex-row md:items-center">
+        <div>
+          <Badge tone="success" icon={<ShieldCheck size={14} />} className="mb-3">
+            근거 기반 지원 코파일럿
+          </Badge>
+          <h2 className="mb-1 text-3xl font-bold tracking-tight text-slate-900">반가워요, {user.name}님!</h2>
+          <p className="text-sm text-slate-500">
+            {user.targetRole ? `${user.targetRole} 직무` : '지원 직무'} 맞춤 경험으로 지원서 방어력을 높여보세요.
+          </p>
+        </div>
+        <div className="flex flex-shrink-0 flex-col gap-2.5 sm:flex-row">
+          <Button variant="secondary" icon={<Plus size={16} />} onClick={() => setIsExpModalOpen(true)}>
+            경험 등록
+          </Button>
+          <Button icon={<Plus size={16} />} onClick={() => onNavigate('pipeline')}>
+            새 지원
+          </Button>
+        </div>
+      </Card>
 
-      <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8 gap-8">
-        {/* Left Desktop Navigation Sidebar */}
-        <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 space-y-6">
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-            <button
-              onClick={() => onNavigate('pipeline')}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-xs active:scale-98"
-            >
-              <Plus size={16} /> 새 지원 시작하기
-            </button>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Coverage summary */}
+        <Card className="flex flex-col items-center lg:col-span-1">
+          <h3 className="mb-1 w-full text-lg font-bold text-slate-900">지원 커버리지</h3>
+          <p className="mb-6 w-full text-sm text-slate-500">
+            등록한 지원 건들의 공고 요건 충족률 평균입니다.
+          </p>
 
-            <nav className="flex flex-col gap-1 mt-4">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all w-full text-left ${
-                  activeTab === 'dashboard'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100/80'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <LayoutDashboard size={16} /> 통합 대시보드
-                </span>
-                <ChevronRight size={14} className={activeTab === 'dashboard' ? 'text-emerald-400' : 'text-slate-300'} />
-              </button>
-
-              <button
-                onClick={() => setActiveTab('vault')}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all w-full text-left ${
-                  activeTab === 'vault'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100/80'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Database size={16} /> 경험 보관함
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'vault' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                  {experiencesLoading ? '···' : experiences.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('history')}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all w-full text-left ${
-                  activeTab === 'history'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-100/80'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <FileText size={16} /> 지원 이력
-                </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'history' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                  {pipelines.length}
-                </span>
-              </button>
-            </nav>
-          </div>
-
-          {/* Workspace Management Box */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3">
-            <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <Sparkles size={14} className="text-emerald-600" /> 워크스페이스 관리
-            </h4>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              등록한 경험, 지원 내역, 작성한 문서를 전부 초기화할 수 있습니다.
-            </p>
-            <button
-              onClick={handleClearAllData}
-              className="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors"
-            >
-              전체 초기화
-            </button>
-          </div>
-        </aside>
-
-        {/* Main Content Area */}
-        <main className="flex-1 min-w-0">
-          {/* Top Greeting Header */}
-          <section className="mb-6 bg-white border border-slate-200/80 rounded-2xl p-6 md:p-8 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200/60 rounded-full text-emerald-800 text-xs font-bold mb-3">
-                <ShieldCheck size={14} className="text-emerald-600" />
-                <span>근거 기반 지원 코파일럿 준비 완료</span>
-              </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-1">
-                반가워요, {user.name}님!
-              </h2>
-              <p className="text-xs md:text-sm text-slate-500 font-medium">
-                {user.targetRole ? `${user.targetRole} 직무` : '지원 직무'} 맞춤 경험으로 지원서 방어력을 극대화하세요.
+          {pipelines.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+              <Database size={32} className="mb-3 text-slate-300" />
+              <p className="text-sm text-slate-500">
+                아직 측정할 지원이 없습니다.
+                <br />
+                공고를 분석하면 실제 매칭 점수가 표시됩니다.
               </p>
             </div>
+          ) : (
+            <>
+              <CircularGauge
+                value={averageCoverage}
+                tone={averageCoverage >= 70 ? 'success' : averageCoverage >= 40 ? 'warning' : 'danger'}
+                className="h-40 w-40"
+              />
+              <p className="mt-6 text-center text-sm text-slate-500">
+                지원 {pipelines.length}건의 평균 커버리지입니다.
+              </p>
+            </>
+          )}
+        </Card>
 
-            <div className="flex items-center gap-2.5 w-full md:w-auto">
-              <button
-                onClick={handleOpenCreateExp}
-                className="flex-1 md:flex-none px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <Plus size={15} /> 경험 등록
-              </button>
-              <button
-                onClick={() => onNavigate('pipeline')}
-                className="flex-1 md:flex-none px-4 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <Plus size={15} /> 새 지원
-              </button>
-            </div>
-          </section>
+        {/* Experience vault summary */}
+        <Card className="flex flex-col justify-between lg:col-span-2">
+          <div>
+            <SectionHeading
+              icon={<Database size={20} />}
+              title="경험 보관함"
+              description="지원서의 근거가 되는 내 경험 자산입니다."
+              action={
+                <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => setIsExpModalOpen(true)}>
+                  추가
+                </Button>
+              }
+              className="mb-5"
+            />
 
-          {/* VIEW TAB 1: INTEGRATED DASHBOARD */}
-          {activeTab === 'dashboard' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Experience Vault Quick Summary Card */}
-              <div className="lg:col-span-1 space-y-6">
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-center mb-5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold">
-                          <Database size={16} />
-                        </div>
-                        <h3 className="text-base font-bold text-slate-900">경험 보관함</h3>
-                      </div>
-                      <button
-                        onClick={handleOpenCreateExp}
-                        className="text-xs text-emerald-700 font-bold hover:underline flex items-center gap-1"
-                      >
-                        <Plus size={14} /> 추가
-                      </button>
-                    </div>
-
-                    <div className="space-y-2.5 mb-6">
-                      <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">등록된 경험</span>
-                        {experiencesLoading ? (
-                          <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
-                        ) : (
-                          <span className="text-sm font-bold text-slate-900">{experiences.length}개</span>
-                        )}
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">수치 근거가 있는 경험</span>
-                        {experiencesLoading ? (
-                          <span className="h-3.5 w-10 bg-slate-200 rounded animate-pulse" aria-hidden="true" />
-                        ) : (
-                          <span className="text-sm font-bold text-emerald-700">{experiences.filter(e => e.c3p4?.product).length}건</span>
-                        )}
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                        <span className="text-xs font-semibold text-slate-600">진행 중인 지원</span>
-                        <span className="text-sm font-bold text-slate-900">{pipelines.length}건</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setActiveTab('vault')}
-                    className="w-full py-2.5 border border-slate-200 text-slate-800 text-xs font-bold rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <span>경험 전체 보기</span>
-                    <ArrowRight size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Active Pipelines List */}
-              <div className="lg:col-span-2">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <TrendingUp size={18} className="text-emerald-600" />
-                    <span>진행 중인 지원</span>
-                  </h3>
-                  <span className="text-xs text-slate-500 font-medium">총 {pipelines.length}건</span>
-                </div>
-
-                {pipelines.length === 0 ? (
-                  <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-10 text-center flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mb-3">
-                      <FolderPlus size={24} />
-                    </div>
-                    <h4 className="font-bold text-slate-900 text-base mb-1">등록된 지원이 없습니다</h4>
-                    <p className="text-xs text-slate-500 mb-5 max-w-md">
-                      목표 지원 기업의 채용 공고(JD)를 입력하면 AI가 내 경험과 매칭한 지원 전략을 만들어줍니다.
-                    </p>
-                    <button
-                      onClick={() => onNavigate('pipeline')}
-                      className="px-5 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
-                    >
-                      <Plus size={15} /> 첫 지원 시작하기
-                    </button>
-                  </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                <span className="text-sm font-semibold text-slate-600">등록된 경험</span>
+                {experiencesLoading ? (
+                  <span className="h-4 w-10 animate-pulse rounded bg-slate-200" aria-hidden="true" />
                 ) : (
-                  <div className="space-y-4">
-                    {pipelines.map((p) => (
-                      <div
-                        key={p.id}
-                        onClick={() => handleOpenPipeline(p.id)}
-                        className="bg-white border border-slate-200/80 rounded-2xl p-5 md:p-6 cursor-pointer shadow-xs hover:shadow-md hover:border-slate-300 transition-all relative group"
-                      >
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-slate-800 text-[11px] font-bold rounded-md mb-1.5">
-                              {p.targetRole}
-                            </span>
-                            <h4 className="font-bold text-slate-900 text-lg group-hover:text-emerald-700 transition-colors">
-                              {p.targetCompany}
-                            </h4>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="bg-emerald-50 border border-emerald-200/60 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                              <ShieldCheck size={14} className="text-emerald-600" /> 매칭률 {p.matchScore}%
-                            </span>
-                            <button
-                              onClick={(e) => handleDeletePipeline(p.id, p.targetCompany, e)}
-                              className="text-slate-300 hover:text-rose-600 p-1 rounded-lg transition-colors"
-                              aria-label={`${p.targetCompany} 지원 삭제`}
-                              title="지원 삭제"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Pipeline Stepper Progress */}
-                        <div className="grid grid-cols-3 gap-1 my-5 pt-3 border-t border-slate-100 text-center">
-                          {[
-                            { step: '공고 분석', done: true },
-                            { step: '경험 매칭', done: true },
-                            { step: '전략 추천', done: true },
-                          ].map((s, idx) => (
-                            <div key={idx} className="flex flex-col items-center gap-1">
-                              <div
-                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                  s.done ? 'bg-slate-900 text-emerald-400' : 'bg-slate-100 text-slate-400'
-                                }`}
-                              >
-                                <CheckCircle2 size={13} />
-                              </div>
-                              <span className="text-[10px] font-medium text-slate-600">{s.step}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenPipeline(p.id);
-                          }}
-                          className="w-full py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
-                        >
-                          <span>지원서 작성하러 가기</span>
-                          <ArrowRight size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <span className="text-base font-bold text-slate-900">{experiences.length}개</span>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* VIEW TAB 2: CANDIDATE VAULT DETAILS */}
-          {activeTab === 'vault' && (
-            <div className="space-y-6">
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                    경험 보관함
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    카드를 클릭하면 경험 세부 내용을 수정하거나 업데이트할 수 있습니다.
-                  </p>
-                </div>
-                <button
-                  onClick={handleOpenCreateExp}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-                >
-                  <Plus size={15} /> 경험 등록
-                </button>
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                <span className="text-sm font-semibold text-slate-600">진행 중인 지원</span>
+                <span className="text-base font-bold text-slate-900">{pipelines.length}건</span>
               </div>
-
-              {/* Search & Filter Bar */}
-              <div className="relative">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="경험 제목, 조직, 3C4P 키워드 또는 수치로 검색..."
-                  aria-label="경험 자산 검색"
-                  className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 shadow-xs"
-                />
-              </div>
-
-              {experiencesLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5" aria-busy="true" aria-live="polite">
-                  <span className="sr-only">경험 자산을 불러오는 중입니다...</span>
-                  {[0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs animate-pulse space-y-2.5"
-                      aria-hidden="true"
-                    >
-                      <div className="h-3.5 w-1/3 bg-slate-100 rounded-md" />
-                      <div className="h-4 w-2/3 bg-slate-200 rounded-md" />
-                      <div className="h-10 bg-slate-100 rounded-xl mt-3" />
-                      <div className="h-10 bg-slate-100 rounded-xl" />
-                      <div className="h-10 bg-slate-100 rounded-xl" />
-                    </div>
-                  ))}
-                </div>
-              ) : filteredExperiences.length === 0 ? (
-                <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center">
-                  <Database size={32} className="mx-auto text-slate-300 mb-3" />
-                  <h4 className="font-bold text-slate-900 text-base mb-1">검색된 경험이 없습니다</h4>
-                  <p className="text-xs text-slate-500 mb-5">새 경험을 추가하여 면접 방어 근거를 채워보세요.</p>
-                  <button
-                    onClick={handleOpenCreateExp}
-                    className="px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs"
-                  >
-                    첫 경험 등록하기
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {filteredExperiences.map((exp) => (
-                    <div
-                      key={exp.id}
-                      onClick={(e) => handleOpenEditExp(exp, e)}
-                      className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer relative group flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-md">
-                              {exp.organization} ({exp.period})
-                            </span>
-                            <h4 className="font-bold text-slate-900 text-base mt-2 group-hover:text-emerald-700 transition-colors">
-                              {exp.title}
-                            </h4>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={(e) => handleOpenEditExp(exp, e)}
-                              className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition-colors"
-                              aria-label={`${exp.title} 수정`}
-                              title="수정"
-                            >
-                              <Edit3 size={15} />
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteExperience(exp.id, exp.title, e)}
-                              className="text-slate-300 hover:text-rose-600 p-1.5 rounded-lg transition-colors"
-                              aria-label={`${exp.title} 삭제`}
-                              title="삭제"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Visual 3C4P Badges */}
-                        <div className="space-y-2 my-3 text-xs">
-                          <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl">
-                            <span className="font-bold text-blue-900 block text-[11px] mb-0.5">🎯 Customer</span>
-                            <p className="text-slate-800">{exp.c3p4.customer}</p>
-                          </div>
-                          <div className="p-2.5 bg-amber-50/60 border border-amber-100 rounded-xl">
-                            <span className="font-bold text-amber-900 block text-[11px] mb-0.5">⚠️ Problem</span>
-                            <p className="text-slate-800">{exp.c3p4.problem}</p>
-                          </div>
-                          <div className="p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-                            <span className="font-bold text-indigo-900 block text-[11px] mb-0.5">⚡ Action</span>
-                            <p className="text-slate-800">{exp.c3p4.action}</p>
-                          </div>
-                          <div className="p-2.5 bg-emerald-50 border border-emerald-200/80 rounded-xl">
-                            <span className="font-bold text-emerald-900 block text-[11px] mb-0.5">📈 Product / Result</span>
-                            <p className="text-emerald-800 font-bold">{exp.c3p4.product}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {exp.evidenceSource && (
-                        <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-                          <span>출처: <strong className="text-slate-800 font-medium">{exp.evidenceSource}</strong></span>
-                          <span className="text-emerald-600 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-0.5">
-                            수정하기 <ChevronRight size={12} />
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
-          )}
+          </div>
 
-          {/* VIEW TAB 3: APPLICATION HISTORY */}
-          {activeTab === 'history' && (
-            <div className="space-y-6">
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
-                <h3 className="text-lg font-bold text-slate-900">지원 이력 및 관리</h3>
-                <p className="text-xs text-slate-500 mt-0.5">지금까지 만든 지원 건과 생성된 문서들의 기록입니다.</p>
-              </div>
-
-              {pipelines.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 text-xs">
-                  기록된 지원 이력이 없습니다.
-                </div>
-              ) : (
-                <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                        <th className="p-4">지원 기업</th>
-                        <th className="p-4">지원 직무</th>
-                        <th className="p-4">매칭 점수</th>
-                        <th className="p-4">생성일</th>
-                        <th className="p-4 text-right">작업</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pipelines.map((p) => (
-                        <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                          <td className="p-4 font-bold text-slate-900">{p.targetCompany}</td>
-                          <td className="p-4 text-slate-600">{p.targetRole}</td>
-                          <td className="p-4">
-                            <span className="text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                              {p.matchScore}%
-                            </span>
-                          </td>
-                          <td className="p-4 text-slate-500">
-                            {new Date(p.createdAt).toLocaleDateString()}
-                          </td>
-                          <td className="p-4 text-right space-x-2">
-                            <button
-                              onClick={() => handleOpenPipeline(p.id)}
-                              className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-xs hover:bg-emerald-600 transition-colors"
-                            >
-                              지원서 작성 열기
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+          <Button
+            variant="secondary"
+            fullWidth
+            className="mt-6"
+            onClick={() => onNavigate('vault')}
+            icon={<ArrowRight size={15} />}
+          >
+            경험 전체 보기
+          </Button>
+        </Card>
       </div>
+
+      {/* Active pipelines */}
+      <section>
+        <SectionHeading
+          icon={<TrendingUp size={20} />}
+          title="진행 중인 지원"
+          description={`총 ${pipelines.length}건`}
+          className="mb-4"
+        />
+
+        {pipelines.length === 0 ? (
+          <EmptyState
+            icon={<FolderPlus size={26} />}
+            title="등록된 지원이 없습니다"
+            description="목표 기업의 채용 공고(JD)를 입력하면 AI가 내 경험과 매칭한 지원 전략을 만들어줍니다."
+            action={
+              <Button icon={<Plus size={16} />} onClick={() => onNavigate('pipeline')}>
+                첫 지원 시작하기
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            {pipelines.map((p) => (
+              <Card key={p.id} interactive onClick={() => openPipeline(p.id)} className="group">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Badge className="mb-1.5">{p.targetRole}</Badge>
+                    <h4 className="truncate text-xl font-bold text-slate-900 transition-colors group-hover:text-brand-700">
+                      {p.targetCompany}
+                    </h4>
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <Badge tone="success" icon={<ShieldCheck size={14} />}>
+                      커버리지 {p.matchScore}%
+                    </Badge>
+                    <button
+                      onClick={(e) => handleDeletePipeline(p.id, p.targetCompany, e)}
+                      className="rounded-lg p-1.5 text-slate-300 transition-colors hover:text-rose-600"
+                      aria-label={`${p.targetCompany} 지원 삭제`}
+                      title="지원 삭제"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="my-5 grid grid-cols-3 gap-1 border-t border-slate-100 pt-4 text-center">
+                  {PIPELINE_STEPS.map((s) => {
+                    const done = hasReached(p.status, s.key);
+                    return (
+                      <div key={s.key} className="flex flex-col items-center gap-1.5">
+                        <div
+                          className={cn(
+                            'flex h-7 w-7 items-center justify-center rounded-full',
+                            done ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                          )}
+                        >
+                          <CheckCircle2 size={15} />
+                        </div>
+                        <span className={cn('text-xs font-medium', done ? 'text-slate-700' : 'text-slate-400')}>
+                          {s.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  fullWidth
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openPipeline(p.id);
+                  }}
+                  icon={<ArrowRight size={15} />}
+                >
+                  지원서 작성하러 가기
+                </Button>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

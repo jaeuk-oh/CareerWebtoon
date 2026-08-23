@@ -1,1 +1,10 @@
-export type ViewState = 'landing' | 'dashboard' | 'pipeline' | 'editor';
+export type ViewState =
+  | 'landing'
+  | 'dashboard'
+  | 'vault'
+  | 'history'
+  | 'pipeline'
+  | 'insights'
+  | 'editor'
+  | 'defense'
+  | 'report';

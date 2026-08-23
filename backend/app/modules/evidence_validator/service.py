@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from .schemas import ValidationResponse
 from .prompts import VALIDATION_SYSTEM
+from app.core.ownership import assert_generated_document_owner
 from app.services.llm_gateway import LLMGateway
 
 _VALID_CLAIM_STATUSES = {"VERIFIED", "UNVERIFIED", "FLAGGED"}
@@ -19,6 +20,10 @@ class EvidenceValidatorService:
         self.llm = LLMGateway()
 
     async def validate(self, generated_document_id: str, user_id: str) -> dict:
+        # `claims` carries no user_id of its own, so ownership has to be established on
+        # the parent document before anything below reads or updates those rows.
+        await assert_generated_document_owner(self.db, generated_document_id, user_id)
+
         # 1. Fetch generated document + claims
         res_claims = await self.db.execute(
             text("SELECT id, claim_text FROM claims WHERE generated_document_id = :doc_id"),
@@ -46,10 +51,14 @@ class EvidenceValidatorService:
         # needing its own status/score/issues, the default budget was truncating
         # the output mid-string and breaking json.loads.
         context = {"claims": claims, "evidence": evidence}
+        # Measured live: validating 17 claims regularly pushes past the default 60s
+        # HARD_CALL_TIMEOUT and burns through all 3 retries before finally landing —
+        # this is a batch call whose cost scales with claim count, not a fixed-size one.
         validation = await self.llm.evaluate_json(
             system_prompt=VALIDATION_SYSTEM,
             prompt=json.dumps(context, ensure_ascii=False, default=str),
-            max_tokens=4096
+            max_tokens=4096,
+            timeout=120.0
         )
         
         validated_claims = validation.get("claims", [])

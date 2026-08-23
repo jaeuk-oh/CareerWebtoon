@@ -128,6 +128,51 @@ class ExperienceEngineService:
             message="Decomposition complete"
         )
         
+    async def save_3c4p(self, experience_id: str, user_id: str, data) -> dict:
+        """
+        Persists a user-entered 3C4P breakdown against the same experience_3c4p table
+        decompose() writes to, so a manual entry survives a device change exactly like
+        an AI-generated one — until now, ExperienceModal only cached this in
+        localStorage, which meant it vanished on a different browser or device.
+
+        experience_3c4p has no unique constraint on experience_id (decompose() can be
+        called more than once, leaving multiple rows and making a plain SELECT
+        nondeterministic about which one comes back). Replacing the existing row(s)
+        outright avoids adding to that ambiguity and keeps "one experience, one 3C4P
+        breakdown" true going forward.
+        """
+        query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")
+        check_res = await self.db.execute(query_check, {"id": experience_id, "user_id": user_id})
+        if not check_res.first():
+            raise ValueError("Experience not found or not owned by user")
+
+        await self.db.execute(
+            text("DELETE FROM experience_3c4p WHERE experience_id = :exp_id"),
+            {"exp_id": experience_id}
+        )
+
+        new_id = str(uuid.uuid4())
+        await self.db.execute(
+            text("""
+                INSERT INTO experience_3c4p (id, experience_id, customer, company_context, competitor, place, product, price, promotion)
+                VALUES (:id, :exp_id, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
+            """),
+            {
+                "id": new_id,
+                "exp_id": experience_id,
+                "customer": json.dumps(data.customer.model_dump() if data.customer else {}),
+                "company_context": json.dumps(data.company_context.model_dump() if data.company_context else {}),
+                "competitor": json.dumps(data.competitor.model_dump() if data.competitor else {}),
+                "place": json.dumps(data.place.model_dump() if data.place else {}),
+                "product": json.dumps(data.product.model_dump() if data.product else {}),
+                "price": json.dumps(data.price.model_dump() if data.price else {}),
+                "promotion": json.dumps(data.promotion.model_dump() if data.promotion else {})
+            }
+        )
+        await self.db.commit()
+
+        return await self.get_3c4p(experience_id, user_id)
+
     async def get_3c4p(self, experience_id: str, user_id: str) -> dict:
         # Verify ownership
         query_check = text("SELECT 1 FROM experiences WHERE id = :id AND user_id = :user_id")

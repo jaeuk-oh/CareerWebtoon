@@ -12,7 +12,7 @@ interface ExperienceModalProps {
 }
 
 export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClose, editingExp }) => {
-  const { addExperience, updateExperience, decomposeExperience, showToast } = useApp();
+  const { addExperience, updateExperience, decomposeExperience, showToast, handleActionError } = useApp();
 
   const [title, setTitle] = useState('');
   const [organization, setOrganization] = useState('');
@@ -97,8 +97,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
 
       await decomposeExperience(expId);
     } catch (err) {
-      console.error(err);
-      showToast('AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+      handleActionError(err, 'AI 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsAiStructuring(false);
     }
@@ -168,23 +167,23 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
           </button>
 
           <div className="flex items-center gap-3.5 mb-6 border-b border-slate-100 pb-4">
-            <div className="w-11 h-11 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold shadow-xs">
+            <div className="w-11 h-11 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold shadow-sm">
               <Database size={22} />
             </div>
             <div>
               <h2 id="experience-modal-title" className="text-xl font-bold text-slate-900 tracking-tight">
                 {editingExp ? '3C4P 경험 자산 수정' : '새 3C4P 경험 자산 등록'}
               </h2>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-sm text-slate-500 font-medium">
                 면접관 압박 질문을 완벽히 방어할 수 있도록 3C4P(Customer, Problem, Action, Product)로 구조화합니다.
               </p>
             </div>
           </div>
 
           {/* Quick AI Auto-Helper Section */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200/80 rounded-2xl">
+          <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200 rounded-2xl">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                 <Sparkles size={15} className={`text-emerald-600 ${isAiStructuring ? 'animate-spin' : ''}`} />
                 AI 3C4P 자동 구조화 어시스턴트
               </span>
@@ -192,7 +191,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                 type="button"
                 onClick={handleAiAutoStructure}
                 disabled={isAiStructuring}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-1.5"
               >
                 {isAiStructuring ? '분석 중...' : '메모 기반 3C4P 채우기'}
               </button>
@@ -202,14 +201,14 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
               value={rawTextNote}
               onChange={(e) => setRawTextNote(e.target.value)}
               placeholder="자유롭게 경험했던 일이나 프로젝트 내용을 한두 문장으로 적어보세요..."
-              className="w-full bg-white/80 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10 placeholder:text-slate-400 resize-none"
+              className="w-full bg-white/80 border border-slate-200 rounded-xl p-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 placeholder:text-slate-400 resize-none"
             />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
+                <label className="block text-sm font-bold text-slate-800 mb-1">
                   경험 프로젝트명 <span className="text-emerald-600">*</span>
                 </label>
                 <input
@@ -218,11 +217,11 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="예: 서류 점검 자동화 및 프로세스 기획"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:border-brand-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
+                <label className="block text-sm font-bold text-slate-800 mb-1">
                   소속 / 조직 <span className="text-emerald-600">*</span>
                 </label>
                 <input
@@ -231,43 +230,43 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={organization}
                   onChange={(e) => setOrganization(e.target.value)}
                   placeholder="예: TechFlow Solutions"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:border-brand-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">수행 기간</label>
+                <label className="block text-sm font-bold text-slate-800 mb-1">수행 기간</label>
                 <input
                   type="text"
                   value={period}
                   onChange={(e) => setPeriod(e.target.value)}
                   placeholder="예: 2023.03 - 2023.11"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:border-brand-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">증거 원본 데이터 출처</label>
+                <label className="block text-sm font-bold text-slate-800 mb-1">증거 원본 데이터 출처</label>
                 <input
                   type="text"
                   value={evidenceSource}
                   onChange={(e) => setEvidenceSource(e.target.value)}
                   placeholder="예: GA4 로그 보고서 / 기획서 v1.2"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:border-brand-500"
                 />
               </div>
             </div>
 
             {/* 3C4P Input Grid */}
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span>3C4P 세부 구조화</span>
-                <span className="text-[10px] text-slate-400 lowercase">c3p4 framework</span>
+                <span className="text-xs text-slate-400 lowercase">c3p4 framework</span>
               </h3>
 
               <div>
-                <label className="block text-xs font-bold text-blue-900 mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-bold text-blue-900 mb-1 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-blue-500"></span> Customer (대상 사용자 및 시장)
                 </label>
                 <input
@@ -275,12 +274,12 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={customer}
                   onChange={(e) => setCustomer(e.target.value)}
                   placeholder="예: B2B SaaS 사용자 및 내부 검증 운영팀"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-bold text-amber-900 mb-1 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span> Problem (해결하고자 한 직무 병목)
                 </label>
                 <input
@@ -288,12 +287,12 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={problem}
                   onChange={(e) => setProblem(e.target.value)}
                   placeholder="예: 수작업 서류 점검 병목으로 처리 기간 평균 7일 소요"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-bold text-brand-900 mb-1 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Action (수행한 본인의 핵심 행동)
                 </label>
                 <input
@@ -301,12 +300,12 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={action}
                   onChange={(e) => setAction(e.target.value)}
                   placeholder="예: 3개월간 반복 문의 500건 분석 및 자동 체크리스트 룰셋 기획"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
+                <label className="block text-sm font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Product / Result (검증 성과 수치)
                 </label>
                 <input
@@ -314,7 +313,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   value={product}
                   onChange={(e) => setProduct(e.target.value)}
                   placeholder="예: 자동화 시스템 런칭 (소요 시간 7일 → 2일 단축, 71.4% 감소)"
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-emerald-500 font-medium"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-emerald-500 font-medium"
                 />
               </div>
             </div>
@@ -324,14 +323,14 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                 type="button"
                 onClick={onClose}
                 disabled={isSaving}
-                className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-6 py-2.5 bg-slate-900 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-1.5"
               >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                 <span>{isSaving ? '저장 중...' : editingExp ? '수정사항 저장' : '경험 자산 저장하기'}</span>

@@ -35,7 +35,7 @@ export const ConfirmDialog: React.FC = () => {
                 <h3 id="confirm-dialog-title" className="text-base font-bold text-slate-900">
                   {confirmDialog.title}
                 </h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{confirmDialog.message}</p>
+                <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">{confirmDialog.message}</p>
               </div>
             </div>
 
@@ -43,7 +43,7 @@ export const ConfirmDialog: React.FC = () => {
               <button
                 type="button"
                 onClick={closeConfirm}
-                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-100 transition-colors"
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-100 transition-colors"
               >
                 취소
               </button>
@@ -53,7 +53,7 @@ export const ConfirmDialog: React.FC = () => {
                   confirmDialog.onConfirm();
                   closeConfirm();
                 }}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors"
               >
                 {confirmDialog.confirmLabel || '삭제하기'}
               </button>

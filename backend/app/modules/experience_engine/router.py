@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.core.security import get_current_user
+from app.core.usage import check_usage_quota, record_usage
 from app.services.llm_gateway import LLMGateway
 from app.modules.experience_engine.service import ExperienceEngineService
-from app.modules.experience_engine.schemas import DecomposeRequest, DecomposeResponse
+from app.modules.experience_engine.schemas import DecomposeRequest, DecomposeResponse, SaveThreeCFourPRequest
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,26 @@ def _raise_mapped(e: Exception):
 async def decompose_experience(
     request: DecomposeRequest,
     current_user: dict = Depends(get_current_user),
+    _quota: None = Depends(check_usage_quota),
+    service: ExperienceEngineService = Depends(get_experience_engine_service),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        result = await service.decompose(request.experience_id, current_user["sub"])
+        await record_usage(db, current_user["sub"], "experience_engine")
+        return result
+    except Exception as e:
+        _raise_mapped(e)
+
+@router.put("/{experience_id}/3c4p")
+async def save_3c4p(
+    experience_id: str,
+    data: SaveThreeCFourPRequest,
+    current_user: dict = Depends(get_current_user),
     service: ExperienceEngineService = Depends(get_experience_engine_service)
 ):
     try:
-        return await service.decompose(request.experience_id, current_user["sub"])
+        return await service.save_3c4p(experience_id, current_user["sub"], data)
     except Exception as e:
         _raise_mapped(e)
 

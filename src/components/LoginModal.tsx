@@ -74,7 +74,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
 
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center font-bold shadow-xs overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold shadow-sm overflow-hidden">
               {user.isLoggedIn && user.avatarUrl ? (
                 <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -85,7 +85,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               <h2 id="login-modal-title" className="text-xl font-bold text-slate-900 tracking-tight">
                 {user.isLoggedIn ? user.name : 'CareerCraft 시작하기'}
               </h2>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-sm text-slate-500 font-medium">
                 {user.isLoggedIn
                   ? user.email || '내 계정'
                   : '로그인하지 않아도 사용할 수 있지만, 다른 기기에서 이어서 쓰려면 Google 로그인이 필요해요'}
@@ -98,14 +98,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               type="button"
               onClick={handleGoogleLogin}
               disabled={isSigningIn}
-              className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-slate-800 rounded-xl font-bold text-sm shadow-xs transition-all flex items-center justify-center gap-2.5 mb-3"
+              className="w-full py-3 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-slate-800 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-2.5 mb-3"
             >
               {isSigningIn ? <Loader2 size={18} className="animate-spin" /> : <GoogleIcon />}
               <span>Google로 계속하기</span>
             </button>
           )}
 
-          <p className="text-[11px] text-slate-400 mb-4 leading-relaxed">
+          <p className="text-sm text-slate-500 mb-4 leading-relaxed">
             {user.isLoggedIn
               ? '이 계정으로 등록한 경험과 지원 내역은 다른 기기에서도 로그인하면 그대로 볼 수 있습니다.'
               : '로그인 전에 등록하는 경험과 지원 내역은 이 브라우저에만 저장되며, Google로 로그인하면 별도의 계정으로 새로 시작합니다.'}
@@ -113,7 +113,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
           <form onSubmit={handleSaveRole} className="space-y-4">
             <div>
-              <label htmlFor="login-role" className="block text-xs font-bold text-slate-800 mb-1">목표 지원 직무</label>
+              <label htmlFor="login-role" className="block text-sm font-bold text-slate-800 mb-1.5">목표 지원 직무</label>
               <input
                 id="login-role"
                 type="text"
@@ -138,7 +138,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               )}
               <button
                 type="submit"
-                className="flex-1 py-3 bg-slate-900 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-xs transition-all"
+                className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-sm shadow-sm transition-all"
               >
                 저장
               </button>

@@ -30,24 +30,28 @@ class LLMGateway:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    async def _create(self, **kwargs):
+    async def _create(self, *, call_timeout: float = HARD_CALL_TIMEOUT, **kwargs):
         # A fresh client (and its own connection pool) per call, not shared across
         # tenacity's retries: cancelling a request via asyncio.wait_for's hard
         # deadline doesn't cleanly unwind httpx's HTTP/2 stream state, and reusing
         # that same client on the next attempt can fail with "Already borrowed"
         # instead of actually retrying against a clean connection.
-        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=45.0)
+        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=call_timeout + 15.0)
         try:
             return await asyncio.wait_for(
-                client.chat.completions.create(**kwargs), timeout=HARD_CALL_TIMEOUT
+                client.chat.completions.create(**kwargs), timeout=call_timeout
             )
         finally:
             await client.close()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def generate(self, prompt: str, system_prompt: str = None, temperature: float = 0.3, max_tokens: int = 2048) -> str:
+    async def generate(
+        self, prompt: str, system_prompt: str = None, temperature: float = 0.3,
+        max_tokens: int = 2048, timeout: float = HARD_CALL_TIMEOUT
+    ) -> str:
         try:
             response = await self._create(
+                call_timeout=timeout,
                 model=self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=temperature,
@@ -59,9 +63,13 @@ class LLMGateway:
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def generate_json(self, prompt: str, system_prompt: str = None, max_tokens: int = 2048) -> dict:
+    async def generate_json(
+        self, prompt: str, system_prompt: str = None, max_tokens: int = 2048,
+        timeout: float = HARD_CALL_TIMEOUT
+    ) -> dict:
         try:
             response = await self._create(
+                call_timeout=timeout,
                 model=self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=0.1,
@@ -75,9 +83,13 @@ class LLMGateway:
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def analyze(self, prompt: str, system_prompt: str = None, temperature: float = 0.2, max_tokens: int = 2048) -> str:
+    async def analyze(
+        self, prompt: str, system_prompt: str = None, temperature: float = 0.2,
+        max_tokens: int = 2048, timeout: float = HARD_CALL_TIMEOUT
+    ) -> str:
         try:
             response = await self._create(
+                call_timeout=timeout,
                 model=self.CRITIC_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=temperature,
@@ -89,9 +101,13 @@ class LLMGateway:
             raise
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def evaluate_json(self, prompt: str, system_prompt: str = None, max_tokens: int = 2048) -> dict:
+    async def evaluate_json(
+        self, prompt: str, system_prompt: str = None, max_tokens: int = 2048,
+        timeout: float = HARD_CALL_TIMEOUT
+    ) -> dict:
         try:
             response = await self._create(
+                call_timeout=timeout,
                 model=self.CRITIC_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 temperature=0.1,
@@ -104,11 +120,17 @@ class LLMGateway:
             logger.error(f"Error in evaluate_json: {e!r}")
             raise
 
-    async def stream_generate(self, prompt: str, system_prompt: str = None) -> AsyncGenerator[str, None]:
-        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=45.0)
+    async def stream_generate(
+        self, prompt: str, system_prompt: str = None, model: str = None, timeout: float = 120.0
+    ) -> AsyncGenerator[str, None]:
+        # No @retry here: a stream that dies partway through has already sent real
+        # tokens to the client, so silently retrying from scratch would duplicate or
+        # garble what the user already saw. The caller decides what "partial" means
+        # for its own use case (document_engine keeps what streamed and moves on).
+        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=timeout)
         try:
             response = await client.chat.completions.create(
-                model=self.WRITER_MODEL,
+                model=model or self.WRITER_MODEL,
                 messages=self._build_messages(prompt, system_prompt),
                 stream=True
             )

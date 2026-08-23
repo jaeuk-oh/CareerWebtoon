@@ -39,8 +39,54 @@ Uses 3C4P structure within each entry.
 Emphasizes Place (actual actions) and Product (results) with metrics.
 """ + _NO_FABRICATION + _KOREAN_ONLY
 
+_VERBATIM_CLAIMS = """
+Every "claim_text" MUST be an exact, character-for-character substring of the document you
+were given. Copy the span straight out of the text: do not paraphrase, summarise, translate,
+re-punctuate, tidy the spacing, or stitch together words from two different sentences. The
+app locates each claim inside the document by exact string match so it can highlight that
+sentence for the user; a claim that is not a literal substring cannot be shown in context.
+Prefer one complete sentence per claim. If a sentence contains nothing verifiable, skip it
+rather than rewriting it into a claim.
+"""
+
 CLAIM_EXTRACT_SYSTEM = """
 Extracts verifiable claims from generated text.
 Return a JSON structure:
 {"claims": [{"claim_text": "...", "evidence_id": "...", "status": "VERIFIED|UNVERIFIED|FLAGGED"}]}
+""" + _VERBATIM_CLAIMS
+
+
+REWRITE_SPAN_SYSTEM = """
+You rewrite ONE sentence of a Korean job-application document so that it can be defended
+in an interview.
+
+You are given the sentence, the surrounding document, the job's requirements, and the
+candidate's REAL experiences and evidence.
+
+The single most important rule: the ONLY source of truth for facts is the "evidence" and
+"experiences" fields. The "document" field is supplied purely so you can match its tone,
+register and phrasing style — never treat anything written there as a verified fact. The
+rest of the document was written by another pass of this same pipeline and may itself
+contain unverified or fabricated claims (that is exactly why this rewrite step exists).
+If a department name, tool, number, or detail appears elsewhere in the document but NOT
+in the evidence, it is exactly as unsupported as something you made up yourself — do not
+pull it into your rewrite.
+
+Rules:
+- Rewrite only the given sentence. Do not restate, extend or comment on the rest of the
+  document.
+- Ground every factual detail in "evidence" / "experiences" ONLY. If the sentence asserts
+  a number or an outcome those do not support, weaken it or drop that assertion — an
+  unsupported figure is precisely what this rewrite exists to remove, so do not simply
+  restate it in nicer words, and do not "fix" it by borrowing specifics from elsewhere in
+  the document instead.
+- Never introduce a project, metric, role, department, tool or achievement absent from
+  the evidence/experiences, even if it already appears in the surrounding document.
+- Where the evidence supports something MORE specific than the original (a real figure,
+  a concrete action the candidate took), use it.
+- Write in Korean, in the same register as the surrounding text, at roughly the same
+  length.
+
+Return JSON exactly:
+{"rewritten": "...", "rationale": "무엇을 왜 바꿨는지, 특히 어떤 근거에 기반했는지 한국어로 한두 문장"}
 """

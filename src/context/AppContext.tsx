@@ -5,6 +5,7 @@ import { DocumentDraft, DefenseChatMessage } from '../types/document';
 import { ensureSession, supabase, signInWithGoogle, signOutAndReload } from '../lib/supabase';
 import {
   api,
+  ApiError,
   BackendExperience,
   FrontendDocType,
   ValidationResponse,
@@ -15,22 +16,27 @@ import {
   EvidenceItem,
   AnchorItem,
   DocumentListItem,
+  RewriteResponse,
+  UsageResponse,
   BACKEND_TO_FRONTEND_DOC_TYPE
 } from '../lib/api';
 
 const ANNOTATIONS_KEY = 'careercraft_exp_annotations';
 
 // The backend's `experiences` table only stores title/company/role/period/description/skills.
-// The richer C3P4/metrics/evidenceSource quick-fields the UI collects have no backend column
-// (they're meant to come from the AI decompose step instead), so we keep them as a local
-// annotation layered on top of the real, persisted experience record.
-type ExperienceAnnotation = Pick<Experience, 'c3p4' | 'metrics' | 'evidenceSource'>;
+// `c3p4` now has a real home (experience_3c4p, via api.experienceEngine.get3c4p/save3c4p) and
+// survives a device change. `metrics`/`evidenceSource` still don't: they're free-text quick
+// fields with no dedicated backend column for a manually-entered experience (evidence/anchors
+// are LLM-shaped extraction results, not a place to store arbitrary user-typed strings), so
+// they remain a local annotation layered on top of the real, persisted experience record.
+type ExperienceAnnotation = Pick<Experience, 'metrics' | 'evidenceSource'>;
 
 const EMPTY_ANNOTATION: ExperienceAnnotation = {
-  c3p4: { customer: '', problem: '', action: '', product: '' },
   metrics: [],
   evidenceSource: ''
 };
+
+const EMPTY_C3P4: Experience['c3p4'] = { customer: '', problem: '', action: '', product: '' };
 
 const loadAnnotations = (): Record<string, ExperienceAnnotation> => {
   try {
@@ -52,23 +58,34 @@ const removeAnnotation = (id: string) => {
   localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(all));
 };
 
-// Shared by decomposeExperience (fresh AI run) and the on-load backfill (an
-// experience that was already decomposed on a different browser/device, so
-// there's no local annotation cache for it yet) — both turn the same backend
-// 3C4P/evidence/anchor shape into the flat quick-view fields the UI renders.
-const buildAnnotationFromDecompose = (
-  c3p4: ThreeCFourP,
-  evidence: EvidenceItem[],
-  anchors: AnchorItem[]
-): ExperienceAnnotation => {
+// Turns the backend's rich 3C4P shape into the flat customer/problem/action/product
+// quick-view fields the UI renders. Used for both an AI decomposition and a manually
+// saved breakdown — the two are indistinguishable once persisted.
+const flattenC3P4 = (c3p4: ThreeCFourP): Experience['c3p4'] => ({
+  customer: [c3p4.customer?.target, c3p4.customer?.problem, c3p4.customer?.needs].filter(Boolean).join(' / '),
+  problem: c3p4.company_context?.situation || c3p4.customer?.problem || '',
+  action: (c3p4.place?.actual_actions || []).join(', '),
+  product: [...(c3p4.product?.results || []), ...(c3p4.product?.deliverables || [])].join(', ')
+});
+
+// The inverse of flattenC3P4 — maps the flat quick fields the user typed by hand back onto
+// the backend's richer shape, so a manual entry round-trips through flattenC3P4 unchanged
+// after being saved and reloaded. Each flat field maps to exactly one backend field (rather
+// than being spread across several, the way an AI decomposition might populate them), which
+// keeps that round trip exact.
+const inflateC3P4 = (flat: Experience['c3p4']): ThreeCFourP => ({
+  customer: flat.customer ? { problem: flat.customer } : undefined,
+  company_context: flat.problem ? { situation: flat.problem } : undefined,
+  place: flat.action ? { actual_actions: [flat.action] } : undefined,
+  product: flat.product ? { results: [flat.product] } : undefined
+});
+
+// metrics/evidenceSource still only have a local annotation, and only for evidence/anchors
+// backfill from an AI decomposition — this is the derivation the on-load backfill effect
+// and decomposeExperience() share.
+const deriveAnnotationFromEvidence = (evidence: EvidenceItem[], anchors: AnchorItem[]): ExperienceAnnotation => {
   const quantitative = evidence.filter((e) => e.is_quantitative);
   return {
-    c3p4: {
-      customer: [c3p4.customer?.target, c3p4.customer?.problem, c3p4.customer?.needs].filter(Boolean).join(' / '),
-      problem: c3p4.company_context?.situation || c3p4.customer?.problem || '',
-      action: (c3p4.place?.actual_actions || []).join(', '),
-      product: [...(c3p4.product?.results || []), ...(c3p4.product?.deliverables || [])].join(', ')
-    },
     metrics: quantitative.length > 0
       ? quantitative.map((e) => `${e.claim}${e.evidence_text ? ` (${e.evidence_text})` : ''}`)
       : evidence.map((e) => e.claim),
@@ -83,6 +100,7 @@ const mergeExperience = (be: BackendExperience, annotations: Record<string, Expe
   organization: be.company || '',
   period: be.period || '',
   description: be.description || '',
+  c3p4: EMPTY_C3P4, // filled in by the on-load 3C4P fetch once it resolves
   ...(annotations[be.id] || EMPTY_ANNOTATION),
   createdAt: be.created_at || new Date().toISOString(),
   updatedAt: be.updated_at
@@ -116,7 +134,15 @@ interface AppContextType {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   updateTargetRole: (targetRole: string) => void;
-  
+
+  usage: UsageResponse | null;
+  refreshUsage: () => Promise<void>;
+  // Shared by every AI-triggering action's catch block: shows the backend's real
+  // "이번 달 한도를 모두 사용했습니다" message (and refreshes the usage badge) on a
+  // 429, or the caller's own fallback message for anything else — instead of a
+  // generic failure toast that hides the real reason an AI action didn't run.
+  handleActionError: (err: unknown, fallbackMessage: string) => void;
+
   experiences: Experience[];
   experiencesLoading: boolean;
   addExperience: (exp: Omit<Experience, 'id' | 'createdAt'>) => Promise<Experience>;
@@ -143,12 +169,15 @@ interface AppContextType {
   documentDraft: DocumentDraft;
   updateDocumentContent: (docType: 'resume' | 'career' | 'coverLetter', text: string) => void;
   generateDocument: (docType: FrontendDocType) => Promise<void>;
+  saveDocument: (docType: FrontendDocType) => Promise<void>;
+  rewriteClaim: (docType: FrontendDocType, claimText: string, instruction?: string) => Promise<RewriteResponse>;
+  applyRewrite: (docType: FrontendDocType, original: string, rewritten: string) => void;
 
   evidenceValidation: ValidationResponse | null;
   runEvidenceValidation: (docType: FrontendDocType) => Promise<void>;
 
   defenseMessages: DefenseChatMessage[];
-  sendDefenseMessage: (text: string) => Promise<void>;
+  sendDefenseMessage: (text: string, target?: DefenseChatMessage) => Promise<void>;
   runDefenseGeneration: (docType: FrontendDocType) => Promise<void>;
 
   toasts: ToastMessage[];
@@ -213,6 +242,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [experiencesLoading, setExperiencesLoading] = useState(true);
   const [evidenceValidation, setEvidenceValidation] = useState<ValidationResponse | null>(null);
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
 
   const requestConfirm = (state: ConfirmDialogState) => setConfirmDialog(state);
   const closeConfirm = () => setConfirmDialog(null);
@@ -250,27 +280,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await ensureSession();
         const { data } = await supabase.auth.getSession();
         syncUserFromSession(data.session);
+        refreshUsage();
         const backendExperiences = await api.experiences.list();
         const annotations = loadAnnotations();
         if (!cancelled) setExperiences(backendExperiences.map((be) => mergeExperience(be, annotations)));
 
-        // Experiences already AI-decomposed on a different browser/device have no
-        // local annotation cache here — the real 3C4P/evidence/anchor data is safe
-        // in the backend, so pull it in instead of leaving the card blank.
-        const missingIds = backendExperiences.filter((be) => !annotations[be.id]).map((be) => be.id);
-        missingIds.forEach(async (id) => {
+        // c3p4 is now server-sourced (experience_3c4p) rather than cached locally, so it has
+        // to be fetched for every experience on load — whether it was AI-decomposed or
+        // hand-entered (both write to the same table now), and regardless of a browser/device
+        // switch. A missing row (never decomposed or saved) just leaves the card blank.
+        backendExperiences.forEach(async (be) => {
           try {
-            const c3p4 = await api.experienceEngine.get3c4p(id);
-            if (!c3p4) return;
+            const c3p4 = await api.experienceEngine.get3c4p(be.id);
+            if (!c3p4 || cancelled) return;
+            const flat = flattenC3P4(c3p4);
+            setExperiences((prev) => prev.map((e) => (e.id === be.id ? { ...e, c3p4: flat } : e)));
+          } catch (err) {
+            console.error(`Failed to load 3C4P for experience ${be.id}`, err);
+          }
+        });
+
+        // metrics/evidenceSource still only have a local annotation. An experience already
+        // AI-decomposed on a different browser/device has no local cache for them here, but
+        // the real evidence/anchor rows are safe in the backend, so re-derive from those
+        // instead of leaving the quick fields blank.
+        const missingAnnotationIds = backendExperiences.filter((be) => !annotations[be.id]).map((be) => be.id);
+        missingAnnotationIds.forEach(async (id) => {
+          try {
             const [evidence, anchors] = await Promise.all([
               api.experienceEngine.getEvidence(id),
               api.experienceEngine.getAnchors(id)
             ]);
-            const annotation = buildAnnotationFromDecompose(c3p4, evidence, anchors);
+            if (evidence.length === 0 && anchors.length === 0) return; // never decomposed either
+            const annotation = deriveAnnotationFromEvidence(evidence, anchors);
             saveAnnotation(id, annotation);
             if (!cancelled) setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation } : e)));
           } catch (err) {
-            console.error(`Failed to backfill 3C4P for experience ${id}`, err);
+            console.error(`Failed to backfill metrics/evidence for experience ${id}`, err);
           }
         });
       } catch (err) {
@@ -372,6 +418,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // defenseMessages were single global slots never keyed to a specific job.
   const loadedPipelineRef = useRef<string | null>(null);
 
+  // The document text whose claims are currently stored server-side, keyed by generated
+  // document id. Editing invalidates those claims, so validation compares against this
+  // to decide whether it has to pay for a re-extraction before grading.
+  const claimsSyncedContentRef = useRef<Record<string, string>>({});
+
   useEffect(() => {
     if (!activePipelineId) {
       if (loadedPipelineRef.current !== null) {
@@ -395,10 +446,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return;
         }
 
+        // Newest draft per doc type. Version is primary, created_at is the tiebreak:
+        // rows written before version numbering was fixed are all version 1, and
+        // without the tiebreak a stale draft wins purely on database row order.
         const latestByType = new Map<string, DocumentListItem>();
         for (const d of docs) {
           const existing = latestByType.get(d.doc_type);
-          if (!existing || d.version > existing.version) latestByType.set(d.doc_type, d);
+          const isNewer =
+            !existing ||
+            d.version > existing.version ||
+            (d.version === existing.version && d.created_at > existing.created_at);
+          if (isNewer) latestByType.set(d.doc_type, d);
         }
 
         const draft: DocumentDraft = { ...INITIAL_DOC, pipelineId: activePipelineId, generatedDocIds: {} };
@@ -412,6 +470,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (feType === 'resume') draft.resumeText = full.content;
           if (feType === 'career') draft.careerText = full.content;
           draft.generatedDocIds![feType] = full.id;
+          claimsSyncedContentRef.current[full.id] = full.content;
           draft.docType = feType;
           if (!mostRecent || meta.created_at > mostRecent.createdAt) {
             mostRecent = { docId: full.id, createdAt: meta.created_at };
@@ -440,7 +499,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 text: q.question,
                 timestamp: '',
                 claimText: q.claim_text,
-                expectedAnswerHint: q.expected_answer_hint
+                expectedAnswerHint: q.expected_answer_hint,
+                difficulty: q.difficulty
               }))
             );
           } catch {
@@ -471,6 +531,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Usage/billing
+  const refreshUsage = async () => {
+    try {
+      setUsage(await api.billing.getUsage());
+    } catch (err) {
+      console.error('Failed to load usage', err);
+    }
+  };
+
+  const handleActionError = (err: unknown, fallbackMessage: string) => {
+    console.error(err);
+    if (err instanceof ApiError && err.status === 429) {
+      showToast(err.message, 'warning');
+      refreshUsage();
+      return;
+    }
+    showToast(fallbackMessage, 'error');
+  };
+
   // Auth Actions — real Supabase/Google auth. loginWithGoogle triggers a redirect;
   // the actual "logged in" state is picked up by the onAuthStateChange listener
   // above once the user lands back here.
@@ -491,6 +570,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUser((prev) => ({ ...prev, targetRole }));
   };
 
+  const hasC3P4Content = (c3p4?: Experience['c3p4']) =>
+    Boolean(c3p4 && (c3p4.customer || c3p4.problem || c3p4.action || c3p4.product));
+
   // Experiences Action
   const addExperience = async (data: Omit<Experience, 'id' | 'createdAt'>): Promise<Experience> => {
     const be = await api.experiences.create({
@@ -499,8 +581,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       period: data.period,
       description: data.description
     });
-    saveAnnotation(be.id, { c3p4: data.c3p4, metrics: data.metrics, evidenceSource: data.evidenceSource || '' });
-    const newExp = mergeExperience(be, loadAnnotations());
+    saveAnnotation(be.id, { metrics: data.metrics, evidenceSource: data.evidenceSource || '' });
+    if (hasC3P4Content(data.c3p4)) {
+      await api.experienceEngine.save3c4p(be.id, inflateC3P4(data.c3p4));
+    }
+    const newExp = { ...mergeExperience(be, loadAnnotations()), c3p4: data.c3p4 };
     setExperiences((prev) => [newExp, ...prev]);
     showToast('새 3C4P 경험 자산이 등록되었습니다.', 'success');
     return newExp;
@@ -513,13 +598,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       period: data.period,
       description: data.description
     });
-    if (data.c3p4 || data.metrics || data.evidenceSource !== undefined) {
+    if (data.metrics || data.evidenceSource !== undefined) {
       const existing = experiences.find((e) => e.id === id);
       saveAnnotation(id, {
-        c3p4: data.c3p4 || existing?.c3p4 || EMPTY_ANNOTATION.c3p4,
         metrics: data.metrics || existing?.metrics || [],
         evidenceSource: data.evidenceSource ?? existing?.evidenceSource ?? ''
       });
+    }
+    if (hasC3P4Content(data.c3p4)) {
+      await api.experienceEngine.save3c4p(id, inflateC3P4(data.c3p4!));
     }
     setExperiences((prev) =>
       prev.map((e) => (e.id === id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e))
@@ -543,9 +630,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // into the same customer/problem/action/product quick-fields the UI already renders.
   const decomposeExperience = async (id: string) => {
     const result = await api.experienceEngine.decompose(id);
-    const annotation = buildAnnotationFromDecompose(result.three_c_four_p, result.evidence, result.anchors);
+    // decompose() already persisted three_c_four_p server-side — only metrics/evidenceSource
+    // still need a local annotation.
+    const annotation = deriveAnnotationFromEvidence(result.evidence, result.anchors);
     saveAnnotation(id, annotation);
-    setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation } : e)));
+    const c3p4 = flattenC3P4(result.three_c_four_p);
+    setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation, c3p4 } : e)));
     showToast('AI가 경험을 분석하여 3C4P 구조로 자동 변환했습니다!', 'success');
   };
 
@@ -623,31 +713,103 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Calls document-engine to write a real AI draft for the active pipeline's job,
   // and remembers its generated_documents.id so evidence validation / defense
   // question generation (which both key off that id) can be run afterwards.
+  // Streams tokens into the editor as they generate instead of leaving a spinner up
+  // for the whole call — document_engine already supports this server-side
+  // (generate_document_stream), this is the piece that was missing to actually use it.
   const generateDocument = async (docType: FrontendDocType) => {
     if (!activePipelineId) {
       showToast('먼저 지원을 생성하거나 선택해주세요.', 'warning');
       return;
     }
-    const doc = await api.documents.generate(activePipelineId, docType);
+    setEvidenceValidation(null);
+    // Clear the field first so a regeneration doesn't show new tokens landing on top
+    // of the previous draft.
     setDocumentDraft((prev) => ({
       ...prev,
       docType,
+      coverLetterText: docType === 'coverLetter' ? '' : prev.coverLetterText,
+      resumeText: docType === 'resume' ? '' : prev.resumeText,
+      careerText: docType === 'career' ? '' : prev.careerText
+    }));
+
+    const doc = await api.documents.generateStream(activePipelineId, docType, (delta) => {
+      setDocumentDraft((prev) => ({
+        ...prev,
+        coverLetterText: docType === 'coverLetter' ? prev.coverLetterText + delta : prev.coverLetterText,
+        resumeText: docType === 'resume' ? prev.resumeText + delta : prev.resumeText,
+        careerText: docType === 'career' ? prev.careerText + delta : prev.careerText
+      }));
+    });
+
+    claimsSyncedContentRef.current[doc.id] = doc.content;
+    setDocumentDraft((prev) => ({
+      ...prev,
+      docType,
+      // Overwrite with the server's saved copy rather than trusting the accumulated
+      // deltas, in case anything was lost in transit.
       coverLetterText: docType === 'coverLetter' ? doc.content : prev.coverLetterText,
       resumeText: docType === 'resume' ? doc.content : prev.resumeText,
       careerText: docType === 'career' ? doc.content : prev.careerText,
       generatedDocIds: { ...prev.generatedDocIds, [docType]: doc.id },
       updatedAt: new Date().toISOString()
     }));
-    setEvidenceValidation(null);
     showToast('AI가 지원서 초안을 생성했습니다.', 'success');
+  };
+
+  const contentFor = (draft: DocumentDraft, docType: FrontendDocType) =>
+    docType === 'resume' ? draft.resumeText : docType === 'career' ? draft.careerText : draft.coverLetterText;
+
+  const withContent = (draft: DocumentDraft, docType: FrontendDocType, text: string): DocumentDraft => ({
+    ...draft,
+    docType,
+    coverLetterText: docType === 'coverLetter' ? text : draft.coverLetterText,
+    resumeText: docType === 'resume' ? text : draft.resumeText,
+    careerText: docType === 'career' ? text : draft.careerText,
+    updatedAt: new Date().toISOString()
+  });
+
+  // Edits used to live only in localStorage, so the server kept serving — and grading —
+  // the originally generated text. This pushes the current text up without re-deriving
+  // claims, which is cheap enough for the editor to call on a debounce.
+  const saveDocument = async (docType: FrontendDocType) => {
+    const docId = documentDraft.generatedDocIds?.[docType];
+    if (!docId) return;
+    await api.documents.update(docId, contentFor(documentDraft, docType), false);
+  };
+
+  const rewriteClaim = async (docType: FrontendDocType, claimText: string, instruction?: string) => {
+    const docId = documentDraft.generatedDocIds?.[docType];
+    if (!docId) throw new Error('먼저 AI 초안을 생성해주세요.');
+    // The rewrite is located by exact match against the document the SERVER holds, so
+    // make sure that is the text the user is actually looking at before asking.
+    await api.documents.update(docId, contentFor(documentDraft, docType), false);
+    return api.documents.rewrite(docId, claimText, instruction);
+  };
+
+  const applyRewrite = (docType: FrontendDocType, original: string, rewritten: string) => {
+    setDocumentDraft((prev) => {
+      const current = contentFor(prev, docType);
+      if (!current.includes(original)) return prev;
+      return withContent(prev, docType, current.replace(original, rewritten));
+    });
   };
 
   const runEvidenceValidation = async (docType: FrontendDocType) => {
     const docId = documentDraft.generatedDocIds?.[docType];
     if (!docId) {
-      showToast('먼저 "AI 초안 생성"으로 문서를 만들어야 수치 검증을 실행할 수 있습니다.', 'warning');
+      showToast('먼저 "AI 초안 생성"으로 문서를 만들어야 근거 검증을 실행할 수 있습니다.', 'warning');
       return;
     }
+
+    // Claims are extracted from the document text. If it changed since the last
+    // extraction, validating now would grade sentences that no longer exist — so push
+    // the current text up and re-derive the claims first.
+    const content = contentFor(documentDraft, docType);
+    if (claimsSyncedContentRef.current[docId] !== content) {
+      await api.documents.update(docId, content, true);
+      claimsSyncedContentRef.current[docId] = content;
+    }
+
     const result = await api.validation.validate(docId);
     setEvidenceValidation(result);
     setDocumentDraft((prev) => ({
@@ -659,10 +821,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // 방금 생성된 AI 질문 중 가장 최근 것을 찾아 그 질문에 대한 실제 답변 평가를 백엔드에 요청한다.
-  const sendDefenseMessage = async (text: string) => {
+  // `target` lets a caller answer a specific question (the defence screen lists them
+  // all); without it we fall back to the most recent question, which is what the
+  // editor's linear chat wants.
+  const sendDefenseMessage = async (text: string, target?: DefenseChatMessage) => {
     if (!text.trim()) return;
 
-    const lastQuestion = [...defenseMessages].reverse().find((m) => m.sender === 'ai' && m.claimText);
+    const lastQuestion =
+      target || [...defenseMessages].reverse().find((m) => m.sender === 'ai' && m.claimText);
     if (!lastQuestion) {
       showToast('먼저 "AI 예상 질문 만들기"로 답변할 질문을 생성해주세요.', 'warning');
       return;
@@ -672,7 +838,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: 'def-user-' + Date.now(),
       sender: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      answersQuestionId: lastQuestion.id
     };
     setDefenseMessages((prev) => [...prev, userMsg]);
 
@@ -689,7 +856,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sender: 'ai',
         text: result.feedback,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        scoreImpact: result.score_delta
+        scoreImpact: result.score_delta,
+        answersQuestionId: lastQuestion.id
       };
       setDefenseMessages((prev) => [...prev, aiMsg]);
       setDocumentDraft((prev) => ({
@@ -722,7 +890,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       text: q.question,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       claimText: q.claim_text,
-      expectedAnswerHint: q.expected_answer_hint
+      expectedAnswerHint: q.expected_answer_hint,
+      difficulty: q.difficulty
     }));
     setDefenseMessages((prev) => [...prev, ...newMessages]);
     showToast(`AI가 예상 면접 질문 ${result.questions.length}개를 만들었습니다.`, 'success');
@@ -763,6 +932,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loginWithGoogle,
         logout,
         updateTargetRole,
+        usage,
+        refreshUsage,
+        handleActionError,
         experiences,
         experiencesLoading,
         addExperience,
@@ -780,6 +952,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         documentDraft,
         updateDocumentContent,
         generateDocument,
+        saveDocument,
+        rewriteClaim,
+        applyRewrite,
         evidenceValidation,
         runEvidenceValidation,
         defenseMessages,

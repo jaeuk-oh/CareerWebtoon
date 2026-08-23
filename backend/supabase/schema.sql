@@ -169,6 +169,41 @@ CREATE TABLE IF NOT EXISTS defense_questions (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- One row per successful AI action (append-only, like evidence/claims). The free
+-- monthly quota is computed as COUNT(*) over the current calendar month rather than
+-- a periodic reset job.
+CREATE TABLE IF NOT EXISTS usage_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    module TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Purchased credits (Toss Payments top-up), on top of the free monthly quota above.
+-- Kept separate from `profiles` (which the frontend upserts directly with the anon
+-- key) so a client can never self-grant a balance — only the backend (via
+-- DATABASE_URL, after actually confirming a Toss payment) writes here.
+CREATE TABLE IF NOT EXISTS credit_balance (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- One row per Toss checkout attempt. order_id's UNIQUE constraint is what makes
+-- payment confirmation idempotent — a reloaded success page can't double-credit.
+CREATE TABLE IF NOT EXISTS credit_purchases (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    order_id TEXT UNIQUE NOT NULL,
+    pack_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    credits INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'failed')),
+    toss_payment_key TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    confirmed_at TIMESTAMPTZ
+);
+
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
@@ -184,6 +219,9 @@ ALTER TABLE application_strategies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE generated_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE defense_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE usage_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_balance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE credit_purchases ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: User-owned data isolation
 CREATE POLICY "Users manage own profiles" ON profiles FOR ALL TO authenticated USING (id = auth.uid()) WITH CHECK (id = auth.uid());
@@ -200,6 +238,12 @@ CREATE POLICY "Users manage own strategies" ON application_strategies FOR ALL TO
 CREATE POLICY "Users manage own generated_docs" ON generated_documents FOR ALL TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 CREATE POLICY "Users access own claims" ON claims FOR ALL TO authenticated USING (generated_document_id IN (SELECT id FROM generated_documents WHERE user_id = auth.uid()));
 CREATE POLICY "Users access own defense_questions" ON defense_questions FOR ALL TO authenticated USING (claim_id IN (SELECT id FROM claims WHERE generated_document_id IN (SELECT id FROM generated_documents WHERE user_id = auth.uid())));
+-- usage_log/credit_balance/credit_purchases: read-only for authenticated users. No
+-- INSERT/UPDATE/DELETE policy is intentional — only the backend (via DATABASE_URL,
+-- which bypasses RLS) writes, and only after actually confirming a Toss payment.
+CREATE POLICY "Users read own usage" ON usage_log FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users read own credit balance" ON credit_balance FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users read own purchases" ON credit_purchases FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 -- Indexes for performance
 CREATE INDEX idx_documents_user_id ON documents(user_id);
@@ -211,6 +255,8 @@ CREATE INDEX idx_jobs_user_id ON jobs(user_id);
 CREATE INDEX idx_experience_matches_job_id ON experience_matches(job_id);
 CREATE INDEX idx_generated_documents_user_id ON generated_documents(user_id);
 CREATE INDEX idx_claims_generated_document_id ON claims(generated_document_id);
+CREATE INDEX idx_usage_log_user_created ON usage_log(user_id, created_at);
+CREATE INDEX idx_credit_purchases_user ON credit_purchases(user_id);
 
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -228,3 +274,4 @@ CREATE TRIGGER update_experiences_updated_at BEFORE UPDATE ON experiences FOR EA
 CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_application_strategies_updated_at BEFORE UPDATE ON application_strategies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_generated_documents_updated_at BEFORE UPDATE ON generated_documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_credit_balance_updated_at BEFORE UPDATE ON credit_balance FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

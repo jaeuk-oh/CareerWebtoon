@@ -21,3 +21,21 @@ class DocumentListResponse(BaseModel):
     doc_type: str
     version: int
     created_at: str
+
+
+class UpdateDocumentRequest(BaseModel):
+    content: str
+    # Re-deriving claims costs an LLM call, so the editor autosaves with this off and
+    # only turns it on right before validating.
+    reextract_claims: bool = False
+
+
+class RewriteRequest(BaseModel):
+    claim_text: str
+    instruction: Optional[str] = None
+
+
+class RewriteResponse(BaseModel):
+    original: str
+    rewritten: str
+    rationale: str

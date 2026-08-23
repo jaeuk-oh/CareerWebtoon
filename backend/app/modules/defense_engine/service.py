@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from .schemas import DefenseResponse
 from .prompts import DEFENSE_SYSTEM, ANSWER_FEEDBACK_SYSTEM
+from app.core.ownership import assert_generated_document_owner
 from app.services.llm_gateway import LLMGateway
 
 class DefenseEngineService:
@@ -11,6 +12,10 @@ class DefenseEngineService:
         self.llm = LLMGateway()
 
     async def generate_defense(self, generated_document_id: str, user_id: str) -> dict:
+        # This writes defense_questions rows keyed to the document's claims, so the
+        # caller must own the document before any of it runs.
+        await assert_generated_document_owner(self.db, generated_document_id, user_id)
+
         # 1. Fetch claims for the document
         res_claims = await self.db.execute(
             text("""
@@ -29,16 +34,27 @@ class DefenseEngineService:
         # evaluation of weak claims, not creative writing, and proved far more
         # reliable than the writer model for this batch size)
         context = {"weak_claims": weak_claims}
+        # Generating up to 3 questions per weak claim scales the same way validation
+        # does — give it the same headroom rather than relying on 3 retries to get lucky.
         generation = await self.llm.evaluate_json(
             system_prompt=DEFENSE_SYSTEM,
             prompt=str(context),
-            max_tokens=8192
+            max_tokens=8192,
+            timeout=120.0
         )
         
         questions_data = generation.get("questions", [])
         
+        # defense_questions.claim_id is a NOT NULL foreign key, and the model is free to
+        # echo back an id that was never in the prompt. Only accept ids that belong to
+        # the weak claims we actually asked about.
+        weak_claim_ids = {str(c["id"]) for c in weak_claims}
+
         response_questions = []
         for q in questions_data:
+            claim_id = str(q.get("claim_id") or "")
+            if claim_id not in weak_claim_ids:
+                continue
             q_id = str(uuid.uuid4())
             # 4. Save to defense_questions table
             await self.db.execute(
@@ -48,7 +64,7 @@ class DefenseEngineService:
                 """),
                 {
                     "id": q_id,
-                    "claim_id": q.get("claim_id"),
+                    "claim_id": claim_id,
                     "question": q.get("question"),
                     "difficulty": q.get("difficulty"),
                     "hint": q.get("expected_answer_hint")
@@ -56,7 +72,7 @@ class DefenseEngineService:
             )
             response_questions.append({
                 "id": q_id,
-                "claim_text": next((c["text"] for c in weak_claims if str(c["id"]) == str(q.get("claim_id"))), ""),
+                "claim_text": next((c["text"] for c in weak_claims if str(c["id"]) == claim_id), ""),
                 "question": q.get("question"),
                 "difficulty": q.get("difficulty"),
                 "expected_answer_hint": q.get("expected_answer_hint")

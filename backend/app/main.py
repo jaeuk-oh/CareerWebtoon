@@ -20,6 +20,7 @@ from app.modules.strategy_engine.router import router as strategy_router
 from app.modules.document_engine.router import router as document_engine_router
 from app.modules.evidence_validator.router import router as evidence_validator_router
 from app.modules.defense_engine.router import router as defense_engine_router
+from app.modules.billing.router import router as billing_router
 
 settings = get_settings()
 
@@ -58,3 +59,4 @@ app.include_router(strategy_router, prefix="/api/v1/strategy", tags=["strategy"]
 app.include_router(document_engine_router, prefix="/api/v1/documents/generate", tags=["document-engine"])
 app.include_router(evidence_validator_router, prefix="/api/v1/validation", tags=["validation"])
 app.include_router(defense_engine_router, prefix="/api/v1/defense", tags=["defense"])
+app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])

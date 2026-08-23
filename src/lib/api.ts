@@ -36,6 +36,65 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+type StreamEvent =
+  | { delta: string }
+  | { error: string }
+  | (GeneratedDocResponse & { done: true });
+
+/**
+ * Reads a Server-Sent Events response, calling onDelta as each text chunk arrives and
+ * resolving with the final `{done: true, ...}` event once the stream ends. Not
+ * EventSource: EventSource can't send an Authorization header, and every request this
+ * app makes needs the Supabase bearer token.
+ */
+async function streamRequest(
+  path: string,
+  body: unknown,
+  onDelta: (text: string) => void
+): Promise<GeneratedDocResponse> {
+  const token = await ensureSession();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok || !res.body) {
+    let detail = res.statusText;
+    try {
+      detail = ((await res.json()) as { detail?: string }).detail || detail;
+    } catch {
+      /* no JSON body */
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by a blank line; each frame here is one `data: ...` line.
+    const frames = buffer.split('\n\n');
+    buffer = frames.pop() ?? '';
+
+    for (const frame of frames) {
+      const line = frame.trim();
+      if (!line.startsWith('data:')) continue;
+      const event = JSON.parse(line.slice(5).trim()) as StreamEvent;
+      if ('error' in event) throw new ApiError(502, event.error);
+      if ('delta' in event) onDelta(event.delta);
+      else return event;
+    }
+  }
+
+  throw new ApiError(502, '문서 생성 스트림이 완료되지 않고 종료되었습니다.');
+}
+
 const get = <T,>(path: string) => request<T>(path);
 const post = <T,>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -154,6 +213,27 @@ export interface StrategyResponse {
   message: string;
 }
 
+export interface UsageResponse {
+  free_used: number;
+  free_limit: number;
+  credit_balance: number;
+  resets_at: string;
+}
+
+export interface CreditPackInfo {
+  pack_id: string;
+  name: string;
+  amount: number;
+  credits: number;
+}
+
+export interface CheckoutResponse {
+  order_id: string;
+  order_name: string;
+  amount: number;
+  client_key: string;
+}
+
 export interface GeneratedDocResponse {
   id: string;
   job_id: string;
@@ -170,6 +250,12 @@ export interface DocumentListItem {
   doc_type: string;
   version: number;
   created_at: string;
+}
+
+export interface RewriteResponse {
+  original: string;
+  rewritten: string;
+  rationale: string;
 }
 
 export interface ClaimValidation {
@@ -246,6 +332,10 @@ export const api = {
   experienceEngine: {
     decompose: (experienceId: string) => post<DecomposeResponse>('/experience-engine/decompose', { experience_id: experienceId }),
     get3c4p: (experienceId: string) => get<ThreeCFourP & { id: string; experience_id: string } | null>(`/experience-engine/${experienceId}/3c4p`),
+    // Persists a hand-entered 3C4P breakdown against the same table decompose() writes
+    // to, so it survives a device change instead of living only in localStorage.
+    save3c4p: (experienceId: string, data: ThreeCFourP) =>
+      put<ThreeCFourP & { id: string; experience_id: string }>(`/experience-engine/${experienceId}/3c4p`, data),
     getEvidence: (experienceId: string) => get<EvidenceItem[]>(`/experience-engine/${experienceId}/evidence`),
     getAnchors: (experienceId: string) => get<AnchorItem[]>(`/experience-engine/${experienceId}/anchors`),
   },
@@ -269,8 +359,29 @@ export const api = {
         job_id: jobId,
         doc_type: DOC_TYPE_TO_BACKEND[docType],
       }),
+    // Renders tokens as they arrive instead of a spinner for the whole generation.
+    // onDelta receives each chunk; the returned promise resolves once the document
+    // (and its extracted claims) are fully saved server-side.
+    generateStream: (jobId: string, docType: FrontendDocType, onDelta: (text: string) => void) =>
+      streamRequest(
+        '/documents/generate/documents/generate/stream',
+        { job_id: jobId, doc_type: DOC_TYPE_TO_BACKEND[docType] },
+        onDelta
+      ),
     list: (jobId: string) => get<DocumentListItem[]>(`/documents/generate/documents/${jobId}/list`),
     get: (docId: string) => get<GeneratedDocResponse>(`/documents/generate/documents/${docId}`),
+    // reextractClaims costs an LLM call, so autosave leaves it off and only the
+    // pre-validation save turns it on.
+    update: (docId: string, content: string, reextractClaims = false) =>
+      put<GeneratedDocResponse>(`/documents/generate/documents/${docId}`, {
+        content,
+        reextract_claims: reextractClaims,
+      }),
+    rewrite: (docId: string, claimText: string, instruction?: string) =>
+      post<RewriteResponse>(`/documents/generate/documents/${docId}/rewrite`, {
+        claim_text: claimText,
+        instruction,
+      }),
   },
   validation: {
     validate: (generatedDocumentId: string) =>
@@ -287,5 +398,12 @@ export const api = {
       user_answer: string;
     }) => post<AnswerFeedbackResponse>('/defense/defense/answer', data),
     get: (generatedDocumentId: string) => get<DefenseResponse>(`/defense/defense/${generatedDocumentId}`),
+  },
+  billing: {
+    getUsage: () => get<UsageResponse>('/billing/usage'),
+    getPacks: () => get<CreditPackInfo[]>('/billing/packs'),
+    checkout: (packId: string) => post<CheckoutResponse>('/billing/checkout', { pack_id: packId }),
+    confirmPayment: (paymentKey: string, orderId: string, amount: number) =>
+      post<UsageResponse>('/billing/confirm', { payment_key: paymentKey, order_id: orderId, amount }),
   },
 };

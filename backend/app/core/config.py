@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     ALLOWED_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # Toss Payments billing
+    TOSS_SECRET_KEY: str = ""
+    TOSS_CLIENT_KEY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 @lru_cache

@@ -30,4 +30,10 @@ export interface DefenseChatMessage {
   // against the right claim (see AppContext.sendDefenseMessage).
   claimText?: string;
   expectedAnswerHint?: string;
+  // defense_questions.difficulty (basic | pressure | deep). The backend has always
+  // stored this; the UI used to throw it away and render one flat chat.
+  difficulty?: string;
+  // Which AI question a user answer belongs to, so answers can be threaded under the
+  // question they address instead of relying on chat ordering.
+  answersQuestionId?: string;
 }

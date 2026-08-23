@@ -15,9 +15,16 @@ class JDAnalyzerService:
     async def analyze_jd(self, data: JDCreateRequest, user_id: str) -> dict:
         prompt = f"Company: {data.company_name}\\nPosition: {data.position}\\nJD Text:\\n{data.jd_raw_text}"
         
-        analysis_result = await self.llm.generate_json(
+        # Extracting/classifying requirements out of a JD is evaluation, not creative
+        # writing — the same distinction that moved defense_engine's question batch to
+        # the Critic model. Measured directly against this exact prompt: the Writer
+        # model (generate_json) took ~48s and regularly tipped over the 60s hard
+        # timeout after all 3 retries, while the Critic model (evaluate_json) returned
+        # the same structured result in ~17s.
+        analysis_result = await self.llm.evaluate_json(
             prompt=prompt,
-            system_prompt=JD_ANALYSIS_SYSTEM
+            system_prompt=JD_ANALYSIS_SYSTEM,
+            max_tokens=2048
         )
         
         job_id = str(uuid.uuid4())

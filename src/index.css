@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   CareerCraft design tokens
+
+   Colour roles are kept deliberately separate. Previously slate-900 acted as the
+   primary action colour while emerald carried BOTH the brand accent and the
+   "verified / success" meaning — which is why every primary button jumped from
+   near-black to green on hover. The roles are now disjoint:
+
+     brand   (indigo) — primary actions, active nav, focus rings
+     emerald          — verified / success ONLY
+     amber            — needs attention / flagged
+     rose             — unverified / destructive
+     slate            — surfaces, text, borders
+
+   Type, elevation and radius scales are encoded in the primitives under
+   src/components/ui/ so screens don't hand-roll them.
+--------------------------------------------------------------------------- */
+
+@theme {
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-slate-50);
+    color: var(--color-slate-900);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* This is a document tool used with a keyboard — a focus ring must never vanish. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}

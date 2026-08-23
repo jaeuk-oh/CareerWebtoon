@@ -71,6 +71,21 @@ class AnchorItem(BaseModel):
     skills: list[str] = Field(default_factory=list)
 
 # --- Request/Response ---
+class SaveThreeCFourPRequest(BaseModel):
+    """
+    Persists a user's own 3C4P breakdown, entered by hand rather than produced by
+    decompose(). Same shape as ThreeCFourPResponse minus the row identifiers, so a
+    manual entry and an AI decomposition are indistinguishable once saved.
+    """
+    customer: Optional[CustomerAnalysis] = None
+    company_context: Optional[CompanyContext] = None
+    competitor: Optional[CompetitorAnalysis] = None
+    place: Optional[PlaceActions] = None
+    product: Optional[ProductResults] = None
+    price: Optional[PriceEfficiency] = None
+    promotion: Optional[PromotionSpread] = None
+
+
 class DecomposeRequest(BaseModel):
     experience_id: str
 
