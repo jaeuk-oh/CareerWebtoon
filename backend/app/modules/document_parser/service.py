@@ -131,7 +131,7 @@ class DocumentParserService:
                 "id": str(r[0]),
                 "doc_type": r[1],
                 "file_name": r[2],
-                "parsed_data": json.loads(r[3]) if r[3] else None,
+                "parsed_data": r[3] or None,
                 "created_at": r[4].isoformat() if r[4] else None,
             }
             for r in rows
@@ -151,6 +151,6 @@ class DocumentParserService:
             "doc_type": row[2],
             "file_name": row[3],
             "raw_text": row[4],
-            "parsed_data": json.loads(row[5]) if row[5] else None,
+            "parsed_data": row[5] or None,
             "created_at": row[6].isoformat() if row[6] else None,
         }
