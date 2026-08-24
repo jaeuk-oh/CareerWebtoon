@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     TOSS_SECRET_KEY: str = ""
     TOSS_CLIENT_KEY: str = ""
 
+    # Exa Search API (web research for JD/company interview insights)
+    EXA_API_KEY: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 @lru_cache

@@ -22,6 +22,7 @@ from app.modules.evidence_validator.router import router as evidence_validator_r
 from app.modules.defense_engine.router import router as defense_engine_router
 from app.modules.billing.router import router as billing_router
 from app.modules.support.router import router as support_router
+from app.modules.interview_research.router import router as interview_research_router
 
 settings = get_settings()
 
@@ -62,3 +63,4 @@ app.include_router(evidence_validator_router, prefix="/api/v1/validation", tags=
 app.include_router(defense_engine_router, prefix="/api/v1/defense", tags=["defense"])
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["billing"])
 app.include_router(support_router, prefix="/api/v1/support", tags=["support"])
+app.include_router(interview_research_router, prefix="/api/v1/interview-research", tags=["interview-research"])

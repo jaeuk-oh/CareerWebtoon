@@ -266,6 +266,34 @@ export interface ContactInquiryResponse {
   created_at: string;
 }
 
+export interface WebInsight {
+  topic: string;
+  summary: string;
+  source_url?: string | null;
+}
+
+export interface PredictedQuestion {
+  question: string;
+  category: string;
+  rationale: string;
+  source_hint?: string | null;
+}
+
+export interface ResearchSource {
+  title: string;
+  url: string;
+}
+
+export interface InterviewResearchResponse {
+  job_id: string;
+  web_insights: WebInsight[];
+  predicted_questions: PredictedQuestion[];
+  keywords: string[];
+  sources: ResearchSource[];
+  cached: boolean;
+  created_at: string;
+}
+
 export interface DocumentUploadResponse {
   id: string;
   file_name: string;
@@ -464,5 +492,11 @@ export const api = {
   support: {
     createInquiry: (message: string, email?: string) =>
       post<ContactInquiryResponse>('/support/inquiries', { message, email }),
+  },
+  interviewResearch: {
+    // Cached — returns 404 (thrown as ApiError) until run() has been called for this job.
+    get: (jobId: string) => get<InterviewResearchResponse>(`/interview-research/${jobId}`),
+    // Costs an LLM+search call. Only call from an explicit user action (never on page load).
+    run: (jobId: string) => post<InterviewResearchResponse>(`/interview-research/${jobId}`),
   },
 };

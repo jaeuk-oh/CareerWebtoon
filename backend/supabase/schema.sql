@@ -214,6 +214,22 @@ CREATE TABLE IF NOT EXISTS contact_inquiries (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- One cached web-research report per job (Exa search + LLM synthesis: predicted
+-- interview questions, culture/trend insight, keyword tags). Re-running overwrites
+-- the row — only the latest research is ever shown, which is what makes it a cache.
+CREATE TABLE IF NOT EXISTS interview_research (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id UUID REFERENCES jobs(id) ON DELETE CASCADE NOT NULL UNIQUE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    web_insights JSONB NOT NULL DEFAULT '[]',
+    predicted_questions JSONB NOT NULL DEFAULT '[]',
+    keywords JSONB NOT NULL DEFAULT '[]',
+    sources JSONB NOT NULL DEFAULT '[]',
+    model_used TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
@@ -233,6 +249,7 @@ ALTER TABLE usage_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_balance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contact_inquiries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interview_research ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: User-owned data isolation
 CREATE POLICY "Users manage own profiles" ON profiles FOR ALL TO authenticated USING (id = auth.uid()) WITH CHECK (id = auth.uid());
@@ -256,6 +273,7 @@ CREATE POLICY "Users read own usage" ON usage_log FOR SELECT TO authenticated US
 CREATE POLICY "Users read own credit balance" ON credit_balance FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY "Users read own purchases" ON credit_purchases FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY "Users read own inquiries" ON contact_inquiries FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users read own interview research" ON interview_research FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 -- Indexes for performance
 CREATE INDEX idx_documents_user_id ON documents(user_id);
@@ -270,6 +288,7 @@ CREATE INDEX idx_claims_generated_document_id ON claims(generated_document_id);
 CREATE INDEX idx_usage_log_user_created ON usage_log(user_id, created_at);
 CREATE INDEX idx_credit_purchases_user ON credit_purchases(user_id);
 CREATE INDEX idx_contact_inquiries_user ON contact_inquiries(user_id);
+CREATE INDEX idx_interview_research_job ON interview_research(job_id);
 
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -288,3 +307,4 @@ CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON jobs FOR EACH ROW EXECUTE
 CREATE TRIGGER update_application_strategies_updated_at BEFORE UPDATE ON application_strategies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_generated_documents_updated_at BEFORE UPDATE ON generated_documents FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_credit_balance_updated_at BEFORE UPDATE ON credit_balance FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_interview_research_updated_at BEFORE UPDATE ON interview_research FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
