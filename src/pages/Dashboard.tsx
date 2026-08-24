@@ -187,6 +187,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     <h4 className="truncate text-xl font-bold text-slate-900 transition-colors group-hover:text-brand-700">
                       {p.targetCompany}
                     </h4>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {new Date(p.createdAt).toLocaleDateString()} 생성
+                    </p>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-2">
                     <Badge tone="success" icon={<ShieldCheck size={14} />}>

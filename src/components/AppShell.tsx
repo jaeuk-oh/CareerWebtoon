@@ -3,7 +3,6 @@ import {
   Briefcase,
   Database,
   FileEdit,
-  FileText,
   LayoutDashboard,
   MessageCircle,
   Search,
@@ -11,7 +10,6 @@ import {
   Plus,
   ShieldAlert,
   ShieldCheck,
-  TrendingUp,
   X
 } from 'lucide-react';
 import { ViewState } from '../types/navigation';
@@ -26,6 +24,11 @@ interface NavEntry {
   label: string;
   icon: React.ElementType;
   count?: number | string;
+}
+
+interface NavGroup {
+  label: string;
+  entries: NavEntry[];
 }
 
 export interface AppShellProps {
@@ -58,14 +61,29 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
-  const nav: NavEntry[] = [
-    { id: 'dashboard', label: '통합 대시보드', icon: LayoutDashboard },
-    { id: 'vault', label: '경험 보관함', icon: Database, count: experiencesLoading ? '···' : experiences.length },
-    { id: 'history', label: '지원 이력', icon: FileText, count: pipelines.length },
-    { id: 'insights', label: 'JD 인사이트', icon: Search },
-    { id: 'editor', label: '지원서 작성', icon: FileEdit },
-    { id: 'defense', label: '면접 방어', icon: ShieldAlert },
-    { id: 'report', label: '피드백 리포트', icon: TrendingUp }
+  // Ordered to mirror how an application actually gets made: build reusable assets
+  // first, then work a single application from research through to interview prep.
+  const navGroups: NavGroup[] = [
+    {
+      label: '내 자산',
+      entries: [
+        { id: 'dashboard', label: '통합 대시보드', icon: LayoutDashboard, count: pipelines.length },
+        {
+          id: 'vault',
+          label: '경험 보관함',
+          icon: Database,
+          count: experiencesLoading ? '···' : experiences.length
+        }
+      ]
+    },
+    {
+      label: '지원 진행',
+      entries: [
+        { id: 'insights', label: '기업·직무 리서치', icon: Search },
+        { id: 'editor', label: '지원서 작성', icon: FileEdit },
+        { id: 'defense', label: '면접 방어', icon: ShieldAlert }
+      ]
+    }
   ];
 
   // The score describes the application currently open. A stale id can survive in
@@ -133,7 +151,16 @@ export const AppShell: React.FC<AppShellProps> = ({
         새 지원 시작하기
       </Button>
 
-      <nav className="mt-6 flex flex-col gap-1">{nav.map(navButton)}</nav>
+      <nav className="mt-6 flex flex-col gap-5">
+        {navGroups.map((group) => (
+          <div key={group.label} className="flex flex-col gap-1">
+            <span className="px-3.5 pb-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+              {group.label}
+            </span>
+            {group.entries.map(navButton)}
+          </div>
+        ))}
+      </nav>
     </>
   );
 

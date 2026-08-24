@@ -5,6 +5,7 @@ import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { FrontendDocType } from '../lib/api';
 import { DefenseChatMessage } from '../types/document';
+import { DefenseReport } from '../components/DefenseReport';
 import { Badge, Button, Card, CircularGauge, EmptyState, SectionHeading, cn } from '../components/ui';
 
 interface DefenseViewProps {
@@ -31,6 +32,7 @@ const DefenseView: React.FC<DefenseViewProps> = ({ onNavigate }) => {
   } = useApp();
 
   const [docType] = useState<FrontendDocType>('coverLetter');
+  const [tab, setTab] = useState<'practice' | 'report'>('practice');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [answer, setAnswer] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -124,7 +126,27 @@ const DefenseView: React.FC<DefenseViewProps> = ({ onNavigate }) => {
         </div>
       </Card>
 
-      {!hasGeneratedDoc ? (
+      <div className="flex gap-1 rounded-xl border border-slate-200 bg-white p-1">
+        {([
+          { key: 'practice', label: '예상 질문 연습' },
+          { key: 'report', label: '결과 리포트' }
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              'flex-1 rounded-lg px-4 py-2 text-sm font-bold transition-colors',
+              tab === t.key ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'report' ? (
+        <DefenseReport />
+      ) : !hasGeneratedDoc ? (
         <EmptyState
           icon={<ShieldAlert size={26} />}
           title="검증할 지원서 초안이 없습니다"

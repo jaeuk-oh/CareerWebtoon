@@ -3,12 +3,10 @@ import { ViewState } from './types/navigation';
 import LandingView from './pages/Landing';
 import DashboardView from './pages/Dashboard';
 import VaultView from './pages/Vault';
-import HistoryView from './pages/History';
 import PipelineView from './pages/Pipeline';
 import InsightsView from './pages/Insights';
 import EditorView from './pages/Editor';
 import DefenseView from './pages/Defense';
-import FeedbackReportView from './pages/FeedbackReport';
 import { AppProvider, useApp } from './context/AppContext';
 import { AppShell } from './components/AppShell';
 import { ToastContainer } from './components/ToastContainer';
@@ -69,12 +67,10 @@ type ShellView = Exclude<ViewState, 'landing'>;
 const SHELL_META: Record<ShellView, { title: string; subtitle: string }> = {
   dashboard: { title: '통합 대시보드', subtitle: '경험 자산과 진행 중인 지원을 한눈에' },
   vault: { title: '경험 보관함', subtitle: '지원서의 근거가 되는 내 경험' },
-  history: { title: '지원 이력', subtitle: '지금까지 만든 지원 건과 생성된 문서' },
   pipeline: { title: '새 지원 시작', subtitle: '공고 분석 → 경험 매칭 → 지원 전략' },
-  insights: { title: 'JD 인사이트', subtitle: '공고가 요구하는 역량과 조직 문화' },
-  editor: { title: '지원서 작성', subtitle: '초안 생성 · 근거 검증 · 면접 방어' },
-  defense: { title: '면접 방어', subtitle: '약한 주장을 파고드는 예상 질문과 답변 연습' },
-  report: { title: '피드백 리포트', subtitle: '근거 검증과 방어 연습 결과 종합' }
+  insights: { title: '기업·직무 리서치', subtitle: '공고가 요구하는 역량과 예상 면접 질문' },
+  editor: { title: '지원서 작성', subtitle: '초안 생성 · 근거 검증' },
+  defense: { title: '면접 방어', subtitle: '예상 질문 연습과 결과 리포트' }
 };
 
 function AppContent() {
@@ -108,12 +104,10 @@ function AppContent() {
       >
         {currentView === 'dashboard' && <DashboardView onNavigate={handleNavigate} />}
         {currentView === 'vault' && <VaultView onNavigate={handleNavigate} />}
-        {currentView === 'history' && <HistoryView onNavigate={handleNavigate} />}
         {currentView === 'pipeline' && <PipelineView onNavigate={handleNavigate} />}
         {currentView === 'insights' && <InsightsView onNavigate={handleNavigate} />}
         {currentView === 'editor' && <EditorView onNavigate={handleNavigate} />}
         {currentView === 'defense' && <DefenseView onNavigate={handleNavigate} />}
-        {currentView === 'report' && <FeedbackReportView onNavigate={handleNavigate} />}
       </AppShell>
       <ToastContainer />
       <ConfirmDialog />

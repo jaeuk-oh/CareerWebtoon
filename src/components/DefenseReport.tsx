@@ -1,12 +1,7 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, FileQuestion, Lightbulb, ShieldCheck, TrendingUp } from 'lucide-react';
-import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
-import { Badge, Button, Card, CircularGauge, EmptyState, SectionHeading } from '../components/ui';
-
-interface FeedbackReportViewProps {
-  onNavigate: (view: ViewState) => void;
-}
+import { Badge, Card, CircularGauge, EmptyState } from './ui';
 
 /**
  * A summary of what actually happened in this application's document + defence
@@ -17,10 +12,8 @@ interface FeedbackReportViewProps {
  * those honestly, so this screen never fabricates a number it can't back up. Every
  * figure here traces back to something the backend actually computed.
  */
-const FeedbackReportView: React.FC<FeedbackReportViewProps> = ({ onNavigate }) => {
-  const { pipelines, activePipelineId, documentDraft, evidenceValidation, defenseMessages } = useApp();
-
-  const activePipeline = pipelines.find((p) => p.id === activePipelineId) || pipelines[0];
+export const DefenseReport: React.FC = () => {
+  const { documentDraft, evidenceValidation, defenseMessages } = useApp();
 
   const answeredQuestions = useMemo(
     () =>
@@ -37,17 +30,6 @@ const FeedbackReportView: React.FC<FeedbackReportViewProps> = ({ onNavigate }) =
     [defenseMessages]
   );
 
-  if (!activePipeline) {
-    return (
-      <EmptyState
-        icon={<FileQuestion size={26} />}
-        title="아직 진행 중인 지원이 없습니다"
-        description="지원서를 만들고 면접 방어 연습을 하면, 그 결과가 여기에 리포트로 정리됩니다."
-        action={<Button onClick={() => onNavigate('pipeline')}>새 지원 시작하기</Button>}
-      />
-    );
-  }
-
   const hasValidation = Boolean(evidenceValidation);
   const hasAnyAnswers = answeredQuestions.length > 0;
 
@@ -56,31 +38,26 @@ const FeedbackReportView: React.FC<FeedbackReportViewProps> = ({ onNavigate }) =
       <EmptyState
         icon={<FileQuestion size={26} />}
         title="아직 리포트로 정리할 결과가 없습니다"
-        description="지원서 작성 화면에서 근거 검증을 실행하거나, 면접 방어 질문에 답변해보세요."
-        action={<Button onClick={() => onNavigate('editor')}>지원서 작성으로 이동</Button>}
+        description="지원서 작성 화면에서 근거 검증을 실행하거나, 옆의 '예상 질문 연습'에서 질문에 답변해보세요."
       />
     );
   }
 
   return (
     <div className="space-y-6">
-      <Card>
-        <SectionHeading
-          icon={<ShieldCheck size={20} />}
-          title={`${activePipeline.targetCompany} 피드백 리포트`}
-          description="근거 검증과 면접 방어 연습 결과를 종합했습니다."
-        />
-      </Card>
-
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card className="flex flex-col items-center">
-          <h3 className="mb-4 w-full text-sm font-bold uppercase tracking-wide text-slate-500">
-            방어 점수
-          </h3>
+          <h3 className="mb-4 w-full text-sm font-bold uppercase tracking-wide text-slate-500">방어 점수</h3>
           {documentDraft.defenseScore > 0 ? (
             <CircularGauge
               value={documentDraft.defenseScore}
-              tone={documentDraft.defenseScore >= 70 ? 'success' : documentDraft.defenseScore >= 40 ? 'warning' : 'danger'}
+              tone={
+                documentDraft.defenseScore >= 70
+                  ? 'success'
+                  : documentDraft.defenseScore >= 40
+                    ? 'warning'
+                    : 'danger'
+              }
               className="h-32 w-32"
             />
           ) : (
@@ -198,5 +175,3 @@ const FeedbackReportView: React.FC<FeedbackReportViewProps> = ({ onNavigate }) =
     </div>
   );
 };
-
-export default FeedbackReportView;
