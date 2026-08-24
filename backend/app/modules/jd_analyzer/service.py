@@ -74,7 +74,7 @@ class JDAnalyzerService:
             "requirements": analysis_result.get("requirements", []),
             "hidden_requirements": analysis_result.get("hidden_requirements", []),
             "culture_keywords": analysis_result.get("culture_keywords", []),
-            "message": "JD analysis completed successfully"
+            "message": "JD 분석이 완료되었습니다."
         }
 
     async def list_jobs(self, user_id: str) -> list[dict]:
@@ -105,8 +105,8 @@ class JDAnalyzerService:
             )
             job = result.fetchone()
             if not job:
-                raise AppException(status_code=404, detail="Job not found")
-                
+                raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
+
             return {
                 "id": str(job.id),
                 "user_id": str(job.user_id),
@@ -124,7 +124,7 @@ class JDAnalyzerService:
                 {"id": job_id, "user_id": user_id}
             )
             if result.rowcount == 0:
-                raise AppException(status_code=404, detail="Job not found")
-            
+                raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
+
             await session.commit()
-            return {"message": "Job deleted successfully"}
+            return {"message": "채용 공고가 삭제되었습니다."}

@@ -85,7 +85,7 @@ class DefenseEngineService:
             "document_id": generated_document_id,
             "questions": response_questions,
             "flagged_claims_count": len(weak_claims),
-            "message": "Defense questions generated successfully."
+            "message": "방어 질문이 생성되었습니다."
         }
 
     async def get_defense(self, generated_document_id: str, user_id: str) -> dict:
@@ -98,7 +98,7 @@ class DefenseEngineService:
             {"doc_id": generated_document_id, "user_id": user_id}
         )
         if not doc_check.first():
-            raise ValueError("Document not found or not owned by user")
+            raise ValueError("문서를 찾을 수 없습니다.")
 
         res = await self.db.execute(
             text("""
@@ -125,7 +125,7 @@ class DefenseEngineService:
             "document_id": generated_document_id,
             "questions": questions,
             "flagged_claims_count": len(questions),
-            "message": "Defense questions retrieved successfully." if questions else "No defense questions generated yet."
+            "message": "방어 질문을 불러왔습니다." if questions else "아직 생성된 방어 질문이 없습니다."
         }
 
     async def generate_answer_feedback(

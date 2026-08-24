@@ -111,7 +111,7 @@ class EvidenceValidatorService:
             "unverified": unverified,
             "overall_score": overall_score,
             "claims": response_claims,
-            "message": "Validation complete."
+            "message": "검증이 완료되었습니다."
         }
 
     async def get_validation(self, generated_document_id: str, user_id: str) -> dict:
@@ -124,7 +124,7 @@ class EvidenceValidatorService:
             {"doc_id": generated_document_id, "user_id": user_id}
         )
         if not doc_check.first():
-            raise ValueError("Document not found or not owned by user")
+            raise ValueError("문서를 찾을 수 없습니다.")
 
         res_claims = await self.db.execute(
             text("SELECT id, claim_text, status, defense_score FROM claims WHERE generated_document_id = :doc_id"),
@@ -163,5 +163,5 @@ class EvidenceValidatorService:
             "unverified": unverified,
             "overall_score": overall_score,
             "claims": response_claims,
-            "message": "Validation retrieved successfully." if total > 0 else "No validation has been run yet."
+            "message": "검증 결과를 불러왔습니다." if total > 0 else "아직 진행된 검증이 없습니다."
         }

@@ -57,7 +57,7 @@ class DocumentParserService:
         if content_type not in SUPPORTED_TYPES and not content_type.startswith("text/"):
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=f"Unsupported file type: {content_type}. Use PDF, DOCX, or TXT."
+                detail=f"지원하지 않는 파일 형식입니다: {content_type}. PDF, DOCX, TXT 파일만 업로드할 수 있습니다."
             )
 
         # 2. Read and validate size
@@ -65,7 +65,7 @@ class DocumentParserService:
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File size exceeds 10MB limit."
+                detail="파일 크기가 10MB를 초과했습니다."
             )
 
         # 3. Extract text
@@ -79,7 +79,7 @@ class DocumentParserService:
         if not raw_text.strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Could not extract text from the uploaded file."
+                detail="업로드한 파일에서 텍스트를 추출할 수 없습니다."
             )
 
         # 4. LLM parsing
@@ -117,7 +117,7 @@ class DocumentParserService:
             "file_name": file.filename,
             "doc_type": doc_type,
             "sections_count": len(parsed.get("sections", [])),
-            "message": f"Document parsed successfully. {len(parsed.get('sections', []))} sections extracted."
+            "message": f"문서 분석이 완료되었습니다. {len(parsed.get('sections', []))}개 섹션을 추출했습니다."
         }
 
     async def get_documents(self, user_id: str) -> list[dict]:
@@ -144,7 +144,7 @@ class DocumentParserService:
         )
         row = result.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
         return {
             "id": str(row[0]),
             "user_id": str(row[1]),

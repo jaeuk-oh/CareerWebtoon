@@ -22,11 +22,11 @@ async def assert_generated_document_owner(db: AsyncSession, document_id: str, us
     try:
         doc_uuid = str(uuid.UUID(str(document_id)))
     except (ValueError, AttributeError, TypeError):
-        raise AppException(status_code=404, detail="Document not found")
+        raise AppException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
     res = await db.execute(
         text("SELECT 1 FROM generated_documents WHERE id = :doc_id AND user_id = :user_id"),
         {"doc_id": doc_uuid, "user_id": user_id},
     )
     if not res.first():
-        raise AppException(status_code=404, detail="Document not found")
+        raise AppException(status_code=404, detail="문서를 찾을 수 없습니다.")

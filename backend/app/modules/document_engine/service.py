@@ -80,7 +80,7 @@ class DocumentEngineService:
         )
         job = job_res.fetchone()
         if not job:
-            raise AppException(status_code=404, detail="Job not found")
+            raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
 
         # 2. Fetch the latest strategy for this job
         res_strategy = await self.db.execute(
@@ -94,7 +94,7 @@ class DocumentEngineService:
         )
         strategy = res_strategy.fetchone()
         if not strategy:
-            raise AppException(status_code=404, detail="Strategy not found — run strategy generation first")
+            raise AppException(status_code=404, detail="지원 전략이 없습니다. 먼저 전략 수립을 진행해주세요.")
 
         # 3. Fetch full 3C4P + evidence for the primary/secondary experiences the
         # strategy selected, so the model writes from real, specific material
@@ -355,7 +355,7 @@ class DocumentEngineService:
 
         doc = await self.get_document(doc_id, user_id)
         if not doc:
-            raise AppException(status_code=404, detail="Document not found")
+            raise AppException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
         content = doc.get("content") or ""
         target = (claim_text or "").strip()

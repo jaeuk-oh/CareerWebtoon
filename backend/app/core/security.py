@@ -25,13 +25,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except httpx.HTTPError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not reach auth service",
+            detail="인증 서버에 연결할 수 없습니다.",
         )
 
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="인증이 만료되었거나 유효하지 않습니다.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

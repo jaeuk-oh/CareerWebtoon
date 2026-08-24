@@ -101,5 +101,5 @@ async def get_document(
     service = DocumentEngineService(db)
     doc = await service.get_document(doc_id, current_user["sub"])
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
     return doc

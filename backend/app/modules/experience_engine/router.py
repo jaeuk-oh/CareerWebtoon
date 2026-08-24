@@ -65,7 +65,7 @@ async def get_3c4p(
     try:
         result = await service.get_3c4p(experience_id, current_user["sub"])
         if not result:
-            raise HTTPException(status_code=404, detail="3C4P data not found")
+            raise HTTPException(status_code=404, detail="3C4P 데이터를 찾을 수 없습니다.")
         return result
     except HTTPException:
         raise

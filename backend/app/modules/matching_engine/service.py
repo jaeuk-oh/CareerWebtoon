@@ -20,7 +20,7 @@ class MatchingEngineService:
             )
             job = job_res.fetchone()
             if not job or not job.jd_analysis:
-                raise AppException(status_code=404, detail="Job or JD analysis not found")
+                raise AppException(status_code=404, detail="채용 공고 또는 JD 분석 결과를 찾을 수 없습니다.")
             jd_analysis = job.jd_analysis
             
             # Fetch user experiences
@@ -91,7 +91,7 @@ class MatchingEngineService:
                 "job_id": job_id,
                 "matches": matches,
                 "coverage_score": match_result.get("coverage_score", 0.0),
-                "message": "Matching completed successfully"
+                "message": "매칭이 완료되었습니다."
             }
 
     async def get_matches(self, job_id: str, user_id: str) -> dict:
@@ -110,7 +110,7 @@ class MatchingEngineService:
             rows = result.fetchall()
             
             if not rows:
-                return {"job_id": job_id, "matches": [], "coverage_score": 0.0, "message": "No matches found"}
+                return {"job_id": job_id, "matches": [], "coverage_score": 0.0, "message": "매칭된 경험이 없습니다."}
                 
             matches = [
                 {
@@ -129,5 +129,5 @@ class MatchingEngineService:
                 "job_id": job_id,
                 "matches": matches,
                 "coverage_score": sum(m["match_score"] for m in matches) / len(matches) if matches else 0.0,
-                "message": "Matches retrieved successfully"
+                "message": "매칭 결과를 불러왔습니다."
             }

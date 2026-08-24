@@ -32,8 +32,8 @@ class StrategyEngineService:
             )
             job = job_res.fetchone()
             if not job:
-                raise AppException(status_code=404, detail="Job not found")
-                
+                raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
+
             jd_analysis = job.jd_analysis if job.jd_analysis else {}
 
             matches_data = [
@@ -64,7 +64,7 @@ class StrategyEngineService:
             strategy_text = strategy_result.get("strategy_text", "")
             
             # Form excluded reasons
-            excluded_reasons = [{"experience_id": eid, "reason": "Not selected as primary or secondary, or classified as bilsal."} for eid in excluded_ids if eid]
+            excluded_reasons = [{"experience_id": eid, "reason": "주요/보조 경험으로 선택되지 않았습니다."} for eid in excluded_ids if eid]
 
             strategy_id = str(uuid.uuid4())
             
@@ -98,7 +98,7 @@ class StrategyEngineService:
                 "gaps": gaps,
                 "excluded_reasons": excluded_reasons,
                 "strategy_text": strategy_text,
-                "message": "Strategy generated successfully"
+                "message": "지원 전략이 생성되었습니다."
             }
 
     async def get_strategy(self, job_id: str, user_id: str) -> dict:
@@ -109,8 +109,8 @@ class StrategyEngineService:
                 {"job_id": job_id, "user_id": user_id}
             )
             if not job_res.fetchone():
-                raise AppException(status_code=404, detail="Job not found")
-                
+                raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
+
             res = await session.execute(
                 text("""
                     SELECT id, primary_experience_id, secondary_experience_id, gap_analysis, strategy_text
@@ -123,7 +123,7 @@ class StrategyEngineService:
             strategy = res.fetchone()
 
             if not strategy:
-                raise AppException(status_code=404, detail="Strategy not found")
+                raise AppException(status_code=404, detail="지원 전략을 찾을 수 없습니다.")
 
             gap_analysis = strategy.gap_analysis or {}
             return {
@@ -134,5 +134,5 @@ class StrategyEngineService:
                 "gaps": gap_analysis.get("gaps", []),
                 "excluded_reasons": gap_analysis.get("excluded_reasons", []),
                 "strategy_text": strategy.strategy_text,
-                "message": "Strategy retrieved successfully"
+                "message": "지원 전략을 불러왔습니다."
             }

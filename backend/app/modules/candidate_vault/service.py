@@ -47,7 +47,7 @@ class CandidateVaultService:
         )
         row = result.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
 
         parsed_data = json.loads(row[0]) if row[0] else {}
         raw_text = row[1] or ""
@@ -69,7 +69,7 @@ Raw Text (first 4000 chars):
             )
         except Exception as e:
             logger.error(f"Experience extraction failed: {e}")
-            raise HTTPException(status_code=500, detail="Failed to extract experiences")
+            raise HTTPException(status_code=500, detail="경험 추출에 실패했습니다.")
 
         experiences_data = extracted.get("experiences", [])
         saved_experiences = []
@@ -84,7 +84,7 @@ Raw Text (first 4000 chars):
                 {
                     "user_id": user_id,
                     "source_document_id": document_id,
-                    "title": exp.get("title", "Untitled"),
+                    "title": exp.get("title", "제목 없음"),
                     "company": exp.get("company"),
                     "role": exp.get("role"),
                     "period": exp.get("period"),
@@ -96,7 +96,7 @@ Raw Text (first 4000 chars):
             saved_experiences.append({
                 "id": str(r[0]),
                 "user_id": user_id,
-                "title": exp.get("title", "Untitled"),
+                "title": exp.get("title", "제목 없음"),
                 "company": exp.get("company"),
                 "role": exp.get("role"),
                 "period": exp.get("period"),
@@ -110,7 +110,7 @@ Raw Text (first 4000 chars):
         return {
             "extracted_count": len(saved_experiences),
             "experiences": saved_experiences,
-            "message": f"Successfully extracted {len(saved_experiences)} experiences from document."
+            "message": f"문서에서 경험 {len(saved_experiences)}건을 추출했습니다."
         }
 
     async def list_experiences(self, user_id: str) -> list[dict]:
@@ -142,7 +142,7 @@ Raw Text (first 4000 chars):
         )
         r = result.fetchone()
         if not r:
-            raise HTTPException(status_code=404, detail="Experience not found")
+            raise HTTPException(status_code=404, detail="경험을 찾을 수 없습니다.")
         return {
             "id": str(r[0]), "user_id": str(r[1]), "title": r[2], "company": r[3],
             "role": r[4], "period": r[5], "description": r[6],
@@ -208,8 +208,8 @@ Raw Text (first 4000 chars):
             {"id": exp_id, "user_id": user_id}
         )
         if not result.fetchone():
-            raise HTTPException(status_code=404, detail="Experience not found")
-        return {"message": "Experience deleted successfully", "id": exp_id}
+            raise HTTPException(status_code=404, detail="경험을 찾을 수 없습니다.")
+        return {"message": "경험이 삭제되었습니다.", "id": exp_id}
 
     async def get_vault_summary(self, user_id: str) -> dict:
         exp_result = await self.db.execute(

@@ -54,7 +54,7 @@ async def test_document_owned_by_someone_else_is_404():
 
     # 404 rather than 403 so the response doesn't confirm the document exists.
     assert exc.value.status_code == 404
-    assert exc.value.detail == "Document not found"
+    assert exc.value.detail == "문서를 찾을 수 없습니다."
 
 
 @pytest.mark.parametrize("bad_id", ["", "not-a-uuid", "1; DROP TABLE claims", None])

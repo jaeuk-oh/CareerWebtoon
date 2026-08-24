@@ -20,7 +20,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal Server Error"},
+        content={"detail": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요."},
     )
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
