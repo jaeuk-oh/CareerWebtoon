@@ -36,6 +36,33 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+// No Content-Type header here — the browser sets multipart/form-data with the
+// correct boundary itself. Setting it manually (like `request` does for JSON)
+// would send a boundary-less header and the server couldn't parse the body.
+async function uploadRequest<T>(path: string, file: File): Promise<T> {
+  const token = await ensureSession();
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      /* no JSON body */
+    }
+    throw new ApiError(res.status, typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+
+  return res.json();
+}
+
 type StreamEvent =
   | { delta: string }
   | { error: string }
@@ -239,6 +266,20 @@ export interface ContactInquiryResponse {
   created_at: string;
 }
 
+export interface DocumentUploadResponse {
+  id: string;
+  file_name: string;
+  doc_type: string;
+  sections_count: number;
+  message: string;
+}
+
+export interface ExperienceExtractResponse {
+  extracted_count: number;
+  experiences: BackendExperience[];
+  message: string;
+}
+
 export interface GeneratedDocResponse {
   id: string;
   job_id: string;
@@ -333,6 +374,15 @@ export const api = {
       data: Partial<{ title: string; company: string; role: string; period: string; description: string; skills: string[] }>
     ) => put<BackendExperience>(`/experiences/${id}`, data),
     delete: (id: string) => del<{ message: string; id: string }>(`/experiences/${id}`),
+    // Extracts experiences (via LLM) from a document already uploaded through
+    // documentParser.upload, and persists them straight into the vault.
+    extract: (documentId: string) => post<ExperienceExtractResponse>('/experiences/extract', { document_id: documentId }),
+  },
+  documentParser: {
+    // PDF/DOCX/TXT upload — a portfolio, resume, or any other document the user
+    // wants the AI to read. Feeds experiences.extract, and from there flows into
+    // matching/strategy/document generation/defense like any other experience.
+    upload: (file: File) => uploadRequest<DocumentUploadResponse>('/documents/upload', file),
   },
   experienceEngine: {
     decompose: (experienceId: string) => post<DecomposeResponse>('/experience-engine/decompose', { experience_id: experienceId }),

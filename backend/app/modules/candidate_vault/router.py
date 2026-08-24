@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.services.llm_gateway import get_llm_gateway, LLMGateway
 from app.core.security import get_current_user
+from app.core.usage import check_usage_quota, record_usage
 from .service import CandidateVaultService
 from .schemas import (
     ExperienceCreate, ExperienceUpdate, ExperienceResponse,
@@ -18,12 +19,16 @@ def get_service(db: AsyncSession = Depends(get_db), llm: LLMGateway = Depends(ge
 async def extract_experiences(
     request: ExperienceExtractRequest,
     current_user: dict = Depends(get_current_user),
+    _quota: None = Depends(check_usage_quota),
     service: CandidateVaultService = Depends(get_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """Extract experiences from a parsed document using AI."""
-    return await service.extract_from_document(
+    result = await service.extract_from_document(
         document_id=request.document_id, user_id=current_user["sub"]
     )
+    await record_usage(db, current_user["sub"], "candidate_vault")
+    return result
 
 @router.get("/summary", response_model=VaultSummary)
 async def get_vault_summary(

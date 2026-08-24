@@ -148,6 +148,7 @@ interface AppContextType {
   addExperience: (exp: Omit<Experience, 'id' | 'createdAt'>) => Promise<Experience>;
   updateExperience: (id: string, exp: Partial<Experience>) => Promise<void>;
   deleteExperience: (id: string) => void;
+  importExperiencesFromFile: (file: File) => Promise<number>;
   decomposeExperience: (id: string) => Promise<void>;
 
   pipelines: JobPipeline[];
@@ -614,6 +615,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('경험 자산이 정상 수정되었습니다.', 'success');
   };
 
+  // Uploads a PDF/DOCX/TXT (portfolio, resume, whatever) and has the AI extract
+  // experiences straight into the vault. From there they flow through the same
+  // matching/strategy/document/defense pipeline as a manually-entered experience.
+  const importExperiencesFromFile = async (file: File): Promise<number> => {
+    const upload = await api.documentParser.upload(file);
+    const { extracted_count, experiences: extracted } = await api.experiences.extract(upload.id);
+    const annotations = loadAnnotations();
+    setExperiences((prev) => [...extracted.map((be) => mergeExperience(be, annotations)), ...prev]);
+    showToast(
+      extracted_count > 0
+        ? `'${upload.file_name}'에서 경험 ${extracted_count}건을 가져왔습니다.`
+        : `'${upload.file_name}'에서 추출할 수 있는 경험을 찾지 못했습니다.`,
+      extracted_count > 0 ? 'success' : 'warning'
+    );
+    return extracted_count;
+  };
+
   const deleteExperience = async (id: string) => {
     setExperiences((prev) => prev.filter((e) => e.id !== id));
     removeAnnotation(id);
@@ -940,6 +958,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addExperience,
         updateExperience,
         deleteExperience,
+        importExperiencesFromFile,
         decomposeExperience,
         pipelines,
         activePipelineId,

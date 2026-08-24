@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { ChevronRight, Database, Edit3, Plus, Search, Trash2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ChevronRight, Database, Edit3, FileUp, Plus, Search, Trash2 } from 'lucide-react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { ExperienceModal } from '../components/ExperienceModal';
 import { Button, Card, EmptyState, SectionHeading } from '../components/ui';
 import { Experience } from '../types/experience';
+
+const ACCEPTED_FILE_TYPES = '.pdf,.docx,.txt';
 
 interface VaultViewProps {
   onNavigate: (view: ViewState) => void;
@@ -18,11 +20,28 @@ const C3P4_FIELDS: { key: keyof Experience['c3p4']; label: string; className: st
 ];
 
 const VaultView: React.FC<VaultViewProps> = () => {
-  const { experiences, experiencesLoading, deleteExperience, requestConfirm } = useApp();
+  const { experiences, experiencesLoading, deleteExperience, requestConfirm, importExperiencesFromFile, handleActionError } =
+    useApp();
 
   const [isExpModalOpen, setIsExpModalOpen] = useState(false);
   const [editingExperience, setEditingExperience] = useState<Experience | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      await importExperiencesFromFile(file);
+    } catch (err) {
+      handleActionError(err, '문서를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const openEdit = (exp: Experience, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -69,15 +88,33 @@ const VaultView: React.FC<VaultViewProps> = () => {
         editingExp={editingExperience}
       />
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPTED_FILE_TYPES}
+        onChange={handleFileSelected}
+        className="hidden"
+      />
+
       <Card>
         <SectionHeading
           icon={<Database size={20} />}
           title="경험 보관함"
           description="카드를 클릭하면 세부 내용을 수정하거나 AI로 다시 구조화할 수 있습니다."
           action={
-            <Button icon={<Plus size={16} />} onClick={openCreate}>
-              경험 등록
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                icon={isImporting ? undefined : <FileUp size={16} />}
+                isLoading={isImporting}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isImporting ? '분석 중…' : 'PDF/포트폴리오 업로드'}
+              </Button>
+              <Button icon={<Plus size={16} />} onClick={openCreate}>
+                경험 등록
+              </Button>
+            </div>
           }
         />
       </Card>
@@ -110,11 +147,23 @@ const VaultView: React.FC<VaultViewProps> = () => {
         <EmptyState
           icon={<Database size={26} />}
           title={searchQuery ? '검색된 경험이 없습니다' : '등록된 경험이 없습니다'}
-          description="경험을 등록하면 AI가 3C4P 구조로 분해하고, 채용 공고와 매칭할 근거로 사용합니다."
+          description="경험을 등록하면 AI가 3C4P 구조로 분해하고, 채용 공고와 매칭할 근거로 사용합니다. PDF 포트폴리오나 이력서를 올리면 AI가 대신 읽고 경험을 추출해드려요."
           action={
-            <Button icon={<Plus size={16} />} onClick={openCreate}>
-              첫 경험 등록하기
-            </Button>
+            !searchQuery && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  icon={isImporting ? undefined : <FileUp size={16} />}
+                  isLoading={isImporting}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isImporting ? '분석 중…' : 'PDF/포트폴리오 업로드'}
+                </Button>
+                <Button icon={<Plus size={16} />} onClick={openCreate}>
+                  첫 경험 등록하기
+                </Button>
+              </div>
+            )
           }
         />
       ) : (
