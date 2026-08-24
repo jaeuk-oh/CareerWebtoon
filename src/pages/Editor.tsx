@@ -30,6 +30,7 @@ import {
 } from '../lib/claims';
 import { DocumentCanvas } from '../components/DocumentCanvas';
 import { Badge, Button, EmptyState, cn } from '../components/ui';
+import { wordDiff } from '../lib/diff';
 
 interface EditorViewProps {
   onNavigate: (view: ViewState) => void;
@@ -395,7 +396,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
         </div>
 
         {/* Right rail */}
-        <aside className="flex w-full flex-col border-t border-slate-200 bg-white lg:w-[380px] lg:flex-shrink-0 lg:border-l lg:border-t-0 xl:w-[420px]">
+        <aside className="flex w-full flex-col border-t border-slate-200 bg-white lg:w-[380px] lg:flex-shrink-0 lg:border-t-0 lg:shadow-[-4px_0_16px_rgba(15,23,42,0.04)] xl:w-[420px]">
           <div className="flex gap-1.5 border-b border-slate-200 bg-slate-50 p-2">
             {([
               { id: 'strategy', label: '지원 전략' },
@@ -499,11 +500,11 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                                 className={cn(
                                   'rounded-2xl border bg-white p-4 shadow-sm transition-all',
                                   status === 'VERIFIED'
-                                    ? 'border-slate-200 border-l-4 border-l-emerald-500'
+                                    ? 'border-slate-200 border-l-4 border-l-emerald-500 opacity-70 hover:opacity-100'
                                     : status === 'FLAGGED'
                                     ? 'border-amber-200 border-l-4 border-l-amber-500'
                                     : 'border-rose-200 border-l-4 border-l-rose-500',
-                                  isActive && 'ring-2 ring-brand-400'
+                                  isActive && 'opacity-100 ring-2 ring-brand-400'
                                 )}
                               >
                                 <div className="mb-2 flex items-start justify-between gap-2">
@@ -559,7 +560,15 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                                   <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 p-3">
                                     <span className="text-xs font-bold text-brand-900">AI 수정안</span>
                                     <p className="mt-1.5 text-sm leading-relaxed text-slate-900">
-                                      {proposal.rewritten}
+                                      {wordDiff(proposal.original, proposal.rewritten).map((seg, i) =>
+                                        seg.added ? (
+                                          <strong key={i} className="rounded bg-brand-100 px-0.5 font-bold text-brand-900">
+                                            {seg.text}
+                                          </strong>
+                                        ) : (
+                                          <React.Fragment key={i}>{seg.text}</React.Fragment>
+                                        )
+                                      )}
                                     </p>
                                     {proposal.rationale && (
                                       <p className="mt-2 text-xs leading-relaxed text-slate-600">
