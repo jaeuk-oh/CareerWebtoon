@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Exa Search API (web research for JD/company interview insights)
     EXA_API_KEY: str = ""
 
+    # Comma-separated emails exempt from the free monthly usage quota (owner/dev testing)
+    ADMIN_EMAILS: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 @lru_cache

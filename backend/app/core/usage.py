@@ -4,10 +4,18 @@ from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.core.plans import FREE_MONTHLY_QUOTA
 from app.core.security import get_current_user
 from app.db.session import get_db
+
+
+def _is_admin(email: str | None) -> bool:
+    if not email:
+        return False
+    admin_emails = {e.strip().lower() for e in get_settings().ADMIN_EMAILS.split(",") if e.strip()}
+    return email.lower() in admin_emails
 
 
 def current_period_start() -> datetime:
@@ -62,6 +70,8 @@ async def check_usage_quota(
     get_current_user, so the check (and the 429) happens before any LLM cost is
     incurred.
     """
+    if _is_admin(current_user.get("email")):
+        return
     free_used = await get_current_usage(db, current_user["sub"])
     if free_used < FREE_MONTHLY_QUOTA:
         return
