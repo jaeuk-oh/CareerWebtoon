@@ -204,6 +204,16 @@ CREATE TABLE IF NOT EXISTS credit_purchases (
     confirmed_at TIMESTAMPTZ
 );
 
+-- Lightweight support channel for the demo: a user-submitted message the operator
+-- reads directly from the Supabase table editor. No email delivery pipeline yet.
+CREATE TABLE IF NOT EXISTS contact_inquiries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    email TEXT,
+    message TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Enable RLS on all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
@@ -222,6 +232,7 @@ ALTER TABLE defense_questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_balance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contact_inquiries ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: User-owned data isolation
 CREATE POLICY "Users manage own profiles" ON profiles FOR ALL TO authenticated USING (id = auth.uid()) WITH CHECK (id = auth.uid());
@@ -244,6 +255,7 @@ CREATE POLICY "Users access own defense_questions" ON defense_questions FOR ALL 
 CREATE POLICY "Users read own usage" ON usage_log FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY "Users read own credit balance" ON credit_balance FOR SELECT TO authenticated USING (user_id = auth.uid());
 CREATE POLICY "Users read own purchases" ON credit_purchases FOR SELECT TO authenticated USING (user_id = auth.uid());
+CREATE POLICY "Users read own inquiries" ON contact_inquiries FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 -- Indexes for performance
 CREATE INDEX idx_documents_user_id ON documents(user_id);
@@ -257,6 +269,7 @@ CREATE INDEX idx_generated_documents_user_id ON generated_documents(user_id);
 CREATE INDEX idx_claims_generated_document_id ON claims(generated_document_id);
 CREATE INDEX idx_usage_log_user_created ON usage_log(user_id, created_at);
 CREATE INDEX idx_credit_purchases_user ON credit_purchases(user_id);
+CREATE INDEX idx_contact_inquiries_user ON contact_inquiries(user_id);
 
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()

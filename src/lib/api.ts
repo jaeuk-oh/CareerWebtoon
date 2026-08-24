@@ -234,6 +234,11 @@ export interface CheckoutResponse {
   client_key: string;
 }
 
+export interface ContactInquiryResponse {
+  id: string;
+  created_at: string;
+}
+
 export interface GeneratedDocResponse {
   id: string;
   job_id: string;
@@ -405,5 +410,9 @@ export const api = {
     checkout: (packId: string) => post<CheckoutResponse>('/billing/checkout', { pack_id: packId }),
     confirmPayment: (paymentKey: string, orderId: string, amount: number) =>
       post<UsageResponse>('/billing/confirm', { payment_key: paymentKey, order_id: orderId, amount }),
+  },
+  support: {
+    createInquiry: (message: string, email?: string) =>
+      post<ContactInquiryResponse>('/support/inquiries', { message, email }),
   },
 };

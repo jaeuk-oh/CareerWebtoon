@@ -5,6 +5,7 @@ import {
   FileEdit,
   FileText,
   LayoutDashboard,
+  MessageCircle,
   Search,
   Menu,
   Plus,
@@ -17,6 +18,7 @@ import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
 import { LoginModal } from './LoginModal';
 import { CreditPurchaseModal } from './CreditPurchaseModal';
+import { ContactModal } from './ContactModal';
 import { Button, cn } from './ui';
 
 interface NavEntry {
@@ -54,6 +56,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const nav: NavEntry[] = [
     { id: 'dashboard', label: '통합 대시보드', icon: LayoutDashboard },
@@ -138,6 +141,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     <>
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
       <CreditPurchaseModal isOpen={isCreditModalOpen} onClose={() => setIsCreditModalOpen(false)} />
+      <ContactModal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} />
 
       <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900">
         {/* Persistent desktop sidebar */}
@@ -205,6 +209,16 @@ export const AppShell: React.FC<AppShellProps> = ({
                   )}
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={() => setIsContactModalOpen(true)}
+                aria-label="문의하기"
+                title="문의하기"
+                className="hidden items-center justify-center rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex"
+              >
+                <MessageCircle size={18} />
+              </button>
 
               <Button size="sm" variant="secondary" onClick={() => setIsCreditModalOpen(true)}>
                 충전하기
