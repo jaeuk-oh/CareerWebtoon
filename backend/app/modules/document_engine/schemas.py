@@ -6,6 +6,11 @@ class GenerateRequest(BaseModel):
     doc_type: str
     options: Optional[dict] = None
 
+class ImportDocumentRequest(BaseModel):
+    job_id: str
+    doc_type: str
+    content: str
+
 class GeneratedDocResponse(BaseModel):
     id: str
     job_id: str

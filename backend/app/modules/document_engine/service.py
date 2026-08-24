@@ -191,6 +191,26 @@ class DocumentEngineService:
             "created_at": "now"
         }
 
+    async def import_document(self, job_id: str, user_id: str, doc_type: str, content: str) -> dict:
+        """
+        Save a user-supplied document (uploaded PDF/DOCX text, or pasted directly into
+        the editor before ever generating a draft) as a real generated_documents row —
+        same version bookkeeping and claim extraction as an AI-generated draft, just
+        skipping the LLM write step. Without this, an uploaded resume only lives in
+        React state until the user first clicks "AI 초안 생성", and a refresh before
+        that loses it.
+        """
+        if not content.strip():
+            raise AppException(status_code=400, detail="빈 문서는 저장할 수 없습니다.")
+        # Confirms the job belongs to this user before creating a row under it.
+        job_res = await self.db.execute(
+            text("SELECT 1 FROM jobs WHERE id = :job_id AND user_id = :user_id"),
+            {"job_id": job_id, "user_id": user_id}
+        )
+        if not job_res.first():
+            raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
+        return await self._save_generated_document(job_id, user_id, doc_type, content)
+
     async def generate_document(self, data: GenerateRequest, user_id: str) -> dict:
         job_id = data.job_id
         context = json.dumps(

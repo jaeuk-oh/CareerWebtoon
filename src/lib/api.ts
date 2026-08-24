@@ -302,6 +302,16 @@ export interface DocumentUploadResponse {
   message: string;
 }
 
+export interface ParsedDocumentResponse {
+  id: string;
+  user_id: string;
+  doc_type: string;
+  file_name?: string | null;
+  raw_text?: string | null;
+  parsed_data?: unknown;
+  created_at: string;
+}
+
 export interface ExperienceExtractResponse {
   extracted_count: number;
   experiences: BackendExperience[];
@@ -411,6 +421,9 @@ export const api = {
     // wants the AI to read. Feeds experiences.extract, and from there flows into
     // matching/strategy/document generation/defense like any other experience.
     upload: (file: File) => uploadRequest<DocumentUploadResponse>('/documents/upload', file),
+    // Fetches the parsed document back (raw_text included) — used to drop an
+    // uploaded resume/cover letter's text straight into the editor.
+    get: (documentId: string) => get<ParsedDocumentResponse>(`/documents/${documentId}`),
   },
   experienceEngine: {
     decompose: (experienceId: string) => post<DecomposeResponse>('/experience-engine/decompose', { experience_id: experienceId }),
@@ -437,6 +450,16 @@ export const api = {
     getStrategy: (jobId: string) => get<StrategyResponse>(`/strategy/${jobId}/strategy`),
   },
   documents: {
+    // Saves user-supplied text (an uploaded/pasted existing resume) as a real
+    // document — same version bookkeeping + claim extraction as an AI draft, no
+    // LLM write step. Used when the editor has no generatedDocId yet, so the
+    // upload doesn't only live in local state until "AI 초안 생성" is clicked.
+    import: (jobId: string, docType: FrontendDocType, content: string) =>
+      post<GeneratedDocResponse>('/documents/generate/documents/import', {
+        job_id: jobId,
+        doc_type: DOC_TYPE_TO_BACKEND[docType],
+        content,
+      }),
     generate: (jobId: string, docType: FrontendDocType) =>
       post<GeneratedDocResponse>('/documents/generate/documents/generate', {
         job_id: jobId,

@@ -13,6 +13,7 @@ import {
   PencilLine,
   Send,
   ShieldAlert,
+  Upload,
   Wand2,
   ShieldCheck,
   User
@@ -20,7 +21,7 @@ import {
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
-import { ClaimValidation, FrontendDocType, RewriteResponse } from '../lib/api';
+import { api, ClaimValidation, FrontendDocType, RewriteResponse } from '../lib/api';
 import {
   CLAIM_STATUS_META,
   claimCardId,
@@ -50,6 +51,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     documentDraft,
     updateDocumentContent,
     generateDocument,
+    importDocumentText,
     evidenceValidation,
     runEvidenceValidation,
     defenseMessages,
@@ -72,6 +74,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const [userInputMessage, setUserInputMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isGeneratingDefense, setIsGeneratingDefense] = useState(false);
   const [isSendingAnswer, setIsSendingAnswer] = useState(false);
@@ -80,6 +83,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // Text last pushed to the server, per document. Seeded on first sight so simply
   // opening a document doesn't trigger a pointless write-back.
   const lastSavedRef = useRef<Record<string, string>>({});
@@ -161,6 +165,29 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     setCopied(true);
     showToast('클립보드에 지원서 내용이 복사되었습니다.', 'success');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleUploadExistingDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file || isUploadingDoc) return;
+    setIsUploadingDoc(true);
+    try {
+      const uploaded = await api.documentParser.upload(file);
+      const parsed = await api.documentParser.get(uploaded.id);
+      const text = (parsed.raw_text || '').trim();
+      if (!text) {
+        showToast('파일에서 텍스트를 추출하지 못했습니다.', 'warning');
+        return;
+      }
+      await importDocumentText(docType, text);
+      setMode('edit');
+      showToast(`'${uploaded.file_name}'의 내용을 불러왔습니다.`, 'success');
+    } catch (err) {
+      handleActionError(err, '파일을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsUploadingDoc(false);
+    }
   };
 
   const handleGenerateDocument = async () => {
@@ -357,14 +384,32 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                 </button>
               </div>
 
-              <Button
-                onClick={handleGenerateDocument}
-                isLoading={isGeneratingDoc}
-                icon={<Bot size={15} />}
-                size="sm"
-              >
-                {isGeneratingDoc ? 'AI 초안 생성 중...' : hasGeneratedDoc ? 'AI 초안 다시 생성' : 'AI 초안 생성'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  onChange={handleUploadExistingDoc}
+                  className="hidden"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  isLoading={isUploadingDoc}
+                  icon={isUploadingDoc ? undefined : <Upload size={15} />}
+                  size="sm"
+                >
+                  {isUploadingDoc ? '불러오는 중...' : '기존 파일 업로드'}
+                </Button>
+                <Button
+                  onClick={handleGenerateDocument}
+                  isLoading={isGeneratingDoc}
+                  icon={<Bot size={15} />}
+                  size="sm"
+                >
+                  {isGeneratingDoc ? 'AI 초안 생성 중...' : hasGeneratedDoc ? 'AI 초안 다시 생성' : 'AI 초안 생성'}
+                </Button>
+              </div>
             </div>
 
             {mode === 'review' && unlocatableCount > 0 && (
@@ -388,7 +433,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
               <textarea
                 value={currentText}
                 onChange={(e) => updateDocumentContent(docType, e.target.value)}
-                placeholder="지원서 내용을 직접 작성하거나, 위에서 'AI 초안 생성'을 눌러 시작하세요..."
+                placeholder="직접 작성하거나 붙여넣거나, 위에서 '기존 파일 업로드' 또는 'AI 초안 생성'을 눌러 시작하세요..."
                 className="min-h-[55vh] w-full resize-none border-0 bg-transparent p-0 text-base leading-[1.9] text-slate-800 outline-none placeholder:text-slate-400"
               />
             )}

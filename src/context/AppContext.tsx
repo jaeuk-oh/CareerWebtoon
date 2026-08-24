@@ -170,6 +170,7 @@ interface AppContextType {
   documentDraft: DocumentDraft;
   updateDocumentContent: (docType: 'resume' | 'career' | 'coverLetter', text: string) => void;
   generateDocument: (docType: FrontendDocType) => Promise<void>;
+  importDocumentText: (docType: FrontendDocType, text: string) => Promise<void>;
   saveDocument: (docType: FrontendDocType) => Promise<void>;
   rewriteClaim: (docType: FrontendDocType, claimText: string, instruction?: string) => Promise<RewriteResponse>;
   applyRewrite: (docType: FrontendDocType, original: string, rewritten: string) => void;
@@ -774,6 +775,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     showToast('AI가 지원서 초안을 생성했습니다.', 'success');
   };
 
+  // For an upload/paste of an existing resume: if a generated_documents row
+  // already exists for this docType, the normal autosave (debounced off
+  // updateDocumentContent) picks it up. If not — nothing has been generated yet
+  // for this docType — there's no id for autosave to save against, so this
+  // creates that row directly from the given text (no LLM write, just claim
+  // extraction), the same way generateDocument's tail does after a real draft.
+  const importDocumentText = async (docType: FrontendDocType, text: string) => {
+    if (!activePipelineId) {
+      showToast('먼저 지원을 생성하거나 선택해주세요.', 'warning');
+      return;
+    }
+    if (documentDraft.generatedDocIds?.[docType]) {
+      updateDocumentContent(docType, text);
+      return;
+    }
+    const doc = await api.documents.import(activePipelineId, docType, text);
+    claimsSyncedContentRef.current[doc.id] = doc.content;
+    setEvidenceValidation(null);
+    setDocumentDraft((prev) => ({
+      ...prev,
+      docType,
+      coverLetterText: docType === 'coverLetter' ? doc.content : prev.coverLetterText,
+      resumeText: docType === 'resume' ? doc.content : prev.resumeText,
+      careerText: docType === 'career' ? doc.content : prev.careerText,
+      generatedDocIds: { ...prev.generatedDocIds, [docType]: doc.id },
+      updatedAt: new Date().toISOString()
+    }));
+  };
+
   const contentFor = (draft: DocumentDraft, docType: FrontendDocType) =>
     docType === 'resume' ? draft.resumeText : docType === 'career' ? draft.careerText : draft.coverLetterText;
 
@@ -971,6 +1001,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         documentDraft,
         updateDocumentContent,
         generateDocument,
+        importDocumentText,
         saveDocument,
         rewriteClaim,
         applyRewrite,

@@ -12,10 +12,23 @@ from .schemas import (
     UpdateDocumentRequest,
     RewriteRequest,
     RewriteResponse,
+    ImportDocumentRequest,
 )
 from .service import DocumentEngineService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+@router.post("/import", response_model=GeneratedDocResponse)
+async def import_document(
+    data: ImportDocumentRequest,
+    current_user: dict = Depends(get_current_user),
+    _quota: None = Depends(check_usage_quota),
+    db: AsyncSession = Depends(get_db)
+):
+    service = DocumentEngineService(db)
+    result = await service.import_document(data.job_id, current_user["sub"], data.doc_type, data.content)
+    await record_usage(db, current_user["sub"], "document_engine")
+    return result
 
 @router.post("/generate", response_model=GeneratedDocResponse)
 async def generate_document(
