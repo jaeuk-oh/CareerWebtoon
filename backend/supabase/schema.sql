@@ -224,6 +224,7 @@ CREATE TABLE IF NOT EXISTS interview_research (
     web_insights JSONB NOT NULL DEFAULT '[]',
     predicted_questions JSONB NOT NULL DEFAULT '[]',
     keywords JSONB NOT NULL DEFAULT '[]',
+    personal_angles JSONB NOT NULL DEFAULT '[]',
     sources JSONB NOT NULL DEFAULT '[]',
     model_used TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),

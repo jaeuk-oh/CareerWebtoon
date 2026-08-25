@@ -284,11 +284,22 @@ export interface ResearchSource {
   url: string;
 }
 
+/** One link between what the research found this team values and what the applicant
+ * actually wrote, plus the question that connection invites. */
+export interface PersonalAngle {
+  company_signal: string;
+  my_material: string;
+  interviewer_question: string;
+  what_i_am_testing?: string | null;
+  risk?: string | null;
+}
+
 export interface InterviewResearchResponse {
   job_id: string;
   web_insights: WebInsight[];
   predicted_questions: PredictedQuestion[];
   keywords: string[];
+  personal_angles: PersonalAngle[];
   sources: ResearchSource[];
   cached: boolean;
   created_at: string;

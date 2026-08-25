@@ -229,7 +229,7 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
                   required
                   value={organization}
                   onChange={(e) => setOrganization(e.target.value)}
-                  placeholder="예: TechFlow Solutions"
+                  placeholder="소속 기업 / 학교 / 팀"
                   className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-900 focus:outline-none focus:border-slate-900 focus:border-brand-500"
                 />
               </div>

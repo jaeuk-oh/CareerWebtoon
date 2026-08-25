@@ -20,6 +20,17 @@ SEARCH_QUERY_TEMPLATES = [
 ]
 MAX_SOURCES = 12
 
+# The JD the user actually registered drives one extra query, so the search is
+# about the role they're applying for rather than the company in general. Capped
+# because Exa charges per query and long queries dilute the match.
+MAX_JD_TERMS_IN_QUERY = 4
+
+# The applicant's own material is what turns generic "likely interview questions"
+# into questions aimed at their specific claims. Truncated so a long cover letter
+# can't crowd the web snippets out of the context window.
+MAX_DOC_CHARS = 3000
+MAX_EXPERIENCES = 8
+
 
 class InterviewResearchService:
     def __init__(self, db: AsyncSession, llm: LLMGateway, search: SearchGateway):
@@ -37,10 +48,62 @@ class InterviewResearchService:
             raise AppException(status_code=404, detail="채용 공고를 찾을 수 없습니다.")
         return job
 
+    async def _get_applicant_context(self, job_id: str, user_id: str) -> dict:
+        """
+        The applicant's own material: the document they're actually submitting for
+        this job, plus their registered experiences. Without this the questions are
+        generic "what would this company ask anyone"; with it they can be aimed at
+        the specific claims this person is making.
+        """
+        doc_res = await self.db.execute(
+            text("""
+                SELECT doc_type, content FROM generated_documents
+                WHERE job_id = :job_id AND user_id = :user_id AND content IS NOT NULL
+                ORDER BY updated_at DESC LIMIT 1
+            """),
+            {"job_id": job_id, "user_id": user_id},
+        )
+        doc = doc_res.first()
+
+        exp_res = await self.db.execute(
+            text("""
+                SELECT e.title, e.company, e.role, e.period, e.description,
+                       COALESCE(array_agg(a.summary) FILTER (WHERE a.summary IS NOT NULL), '{}') AS anchors
+                FROM experiences e
+                LEFT JOIN experience_anchors a ON a.experience_id = e.id
+                WHERE e.user_id = :user_id
+                GROUP BY e.id, e.title, e.company, e.role, e.period, e.description, e.created_at
+                ORDER BY e.created_at DESC
+                LIMIT :limit
+            """),
+            {"user_id": user_id, "limit": MAX_EXPERIENCES},
+        )
+
+        return {
+            "document": {
+                "doc_type": doc.doc_type,
+                "content": (doc.content or "")[:MAX_DOC_CHARS],
+            }
+            if doc
+            else None,
+            "experiences": [
+                {
+                    "title": r.title,
+                    "company": r.company,
+                    "role": r.role,
+                    "period": r.period,
+                    "description": r.description,
+                    "anchors": list(r.anchors or []),
+                }
+                for r in exp_res.fetchall()
+            ],
+        }
+
     async def _fetch_row(self, job_id: str, user_id: str):
         res = await self.db.execute(
             text("""
-                SELECT job_id, web_insights, predicted_questions, keywords, sources, created_at
+                SELECT job_id, web_insights, predicted_questions, keywords, personal_angles,
+                       sources, created_at
                 FROM interview_research WHERE job_id = :job_id AND user_id = :user_id
             """),
             {"job_id": job_id, "user_id": user_id},
@@ -56,6 +119,7 @@ class InterviewResearchService:
             "web_insights": row.web_insights or [],
             "predicted_questions": row.predicted_questions or [],
             "keywords": row.keywords or [],
+            "personal_angles": row.personal_angles or [],
             "sources": row.sources or [],
             "cached": True,
             "created_at": row.created_at.isoformat(),
@@ -68,7 +132,22 @@ class InterviewResearchService:
         if not company:
             raise AppException(status_code=400, detail="회사명이 없는 공고는 웹 리서치를 진행할 수 없습니다.")
 
+        jd_analysis = job.jd_analysis or {}
+        requirements = jd_analysis.get("requirements", []) or []
+        hidden_requirements = jd_analysis.get("hidden_requirements", []) or []
+
         queries = [t.format(company=company, position=position).strip() for t in SEARCH_QUERY_TEMPLATES]
+
+        # Search for what this specific JD asks for, not just the company in general.
+        # requirements entries are either plain strings or {"requirement": ...} dicts
+        # depending on which jd_analyzer run produced them.
+        jd_terms: list[str] = []
+        for item in requirements[:MAX_JD_TERMS_IN_QUERY]:
+            term = item.get("requirement") if isinstance(item, dict) else item
+            if isinstance(term, str) and term.strip():
+                jd_terms.append(term.strip())
+        if jd_terms:
+            queries.append(f"{company} {position} {' '.join(jd_terms)}".strip())
 
         seen_urls: set[str] = set()
         snippets: list[str] = []
@@ -84,14 +163,17 @@ class InterviewResearchService:
                 highlight_text = " / ".join(r.highlights) if r.highlights else ""
                 snippets.append(f"[{r.title}]({r.url})\n{highlight_text}")
 
-        jd_analysis = job.jd_analysis or {}
+        applicant = await self._get_applicant_context(job_id, user_id)
         prompt = json.dumps(
             {
                 "company": company,
                 "position": position,
-                "jd_requirements": jd_analysis.get("requirements", []),
-                "jd_hidden_requirements": jd_analysis.get("hidden_requirements", []),
+                "jd_raw_text": (job.jd_raw_text or "")[:MAX_DOC_CHARS],
+                "jd_requirements": requirements,
+                "jd_hidden_requirements": hidden_requirements,
                 "web_snippets": snippets,
+                "applicant_document": applicant["document"],
+                "applicant_experiences": applicant["experiences"],
             },
             ensure_ascii=False,
         )
@@ -108,16 +190,20 @@ class InterviewResearchService:
         web_insights = result.get("web_insights", [])
         predicted_questions = result.get("predicted_questions", [])
         keywords = result.get("keywords", [])
+        personal_angles = result.get("personal_angles", [])
 
         await self.db.execute(
             text("""
                 INSERT INTO interview_research
-                    (job_id, user_id, web_insights, predicted_questions, keywords, sources, model_used)
-                VALUES (:job_id, :user_id, :web_insights, :predicted_questions, :keywords, :sources, :model_used)
+                    (job_id, user_id, web_insights, predicted_questions, keywords, personal_angles,
+                     sources, model_used)
+                VALUES (:job_id, :user_id, :web_insights, :predicted_questions, :keywords,
+                        :personal_angles, :sources, :model_used)
                 ON CONFLICT (job_id) DO UPDATE SET
                     web_insights = :web_insights,
                     predicted_questions = :predicted_questions,
                     keywords = :keywords,
+                    personal_angles = :personal_angles,
                     sources = :sources,
                     model_used = :model_used,
                     updated_at = now()
@@ -128,6 +214,7 @@ class InterviewResearchService:
                 "web_insights": json.dumps(web_insights, ensure_ascii=False),
                 "predicted_questions": json.dumps(predicted_questions, ensure_ascii=False),
                 "keywords": json.dumps(keywords, ensure_ascii=False),
+                "personal_angles": json.dumps(personal_angles, ensure_ascii=False),
                 "sources": json.dumps(sources, ensure_ascii=False),
                 "model_used": self.llm.CRITIC_MODEL,
             },
@@ -139,6 +226,7 @@ class InterviewResearchService:
             "web_insights": row.web_insights or [],
             "predicted_questions": row.predicted_questions or [],
             "keywords": row.keywords or [],
+            "personal_angles": row.personal_angles or [],
             "sources": row.sources or [],
             "cached": False,
             "created_at": row.created_at.isoformat(),

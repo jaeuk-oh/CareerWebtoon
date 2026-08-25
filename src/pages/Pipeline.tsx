@@ -27,23 +27,13 @@ const MATCH_TYPE_LABEL: Record<string, { label: string; tone: 'success' | 'warni
   bilsal: { label: '매칭 약함', tone: 'neutral' }
 };
 
-const SAMPLE_JDS = [
-  {
-    company: 'TechNova',
-    role: '콘텐츠 기획 / 웹툰 PD',
-    jd: '[TechNova 2024 웹툰 PD 채용]\n- 신규 웹툰 IP 발굴 및 기획\n- 작가 커뮤니케이션 및 스케줄링 관리\n- 사용자 이탈 및 작품 반응 데이터 분석 역량\n- 애자일 스크럼 및 타 직군 프로젝트 협업'
-  },
-  {
-    company: 'FutureSaaS',
-    role: '서비스 기획자 / PM',
-    jd: '[FutureSaaS B2B PM 채용]\n- B2B 서비스 워크플로우 분석 및 UX 기획\n- 사용자 병목 문제 정의 및 체크리스트 자동화\n- 개발/디자인 팀과 애자일 스크럼 운영\n- 데이터 기반 기능 개선 수치 증명'
-  },
-  {
-    company: 'DataCraft Labs',
-    role: '데이터 분석가 / UX Analyst',
-    jd: '[DataCraft GA4 Analyst 채용]\n- 유저 이탈 구간 데이터 로깅 및 코호트 분석\n- 온보딩 Funnel 개선 A/B 테스트 기획\n- 정량적 성과 수치 도출 및 면접 방어 자산 보유자'
-  }
-];
+// A single sample so a first-time user can see the analysis run end to end without
+// pasting a real posting. Everything else on this screen is the user's own input.
+const SAMPLE_JD = {
+  company: 'TechNova',
+  role: '콘텐츠 기획 / 웹툰 PD',
+  jd: '[TechNova 2024 웹툰 PD 채용]\n- 신규 웹툰 IP 발굴 및 기획\n- 작가 커뮤니케이션 및 스케줄링 관리\n- 사용자 이탈 및 작품 반응 데이터 분석 역량\n- 애자일 스크럼 및 타 직군 프로젝트 협업'
+};
 
 const STEPS = [
   { num: 1, label: '공고 입력' },
@@ -67,12 +57,11 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
   const [match, setMatch] = useState<MatchResponse | null>(null);
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
 
-  const handleFillSample = (index: number) => {
-    const sample = SAMPLE_JDS[index];
-    setTargetCompany(sample.company);
-    setTargetRole(sample.role);
-    setJdText(sample.jd);
-    showToast(`'${sample.company}' 샘플 공고가 입력되었습니다.`, 'info');
+  const handleFillSample = () => {
+    setTargetCompany(SAMPLE_JD.company);
+    setTargetRole(SAMPLE_JD.role);
+    setJdText(SAMPLE_JD.jd);
+    showToast('샘플 공고가 입력되었습니다.', 'info');
   };
 
   const handleStartAnalysis = async () => {
@@ -184,17 +173,12 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                 <span className="mb-2.5 flex items-center gap-1.5 text-sm font-bold text-slate-700">
                   <Sparkles size={15} className="text-brand-600" /> 샘플 공고 1-Click 자동 채우기
                 </span>
-                <div className="flex flex-wrap gap-2">
-                  {SAMPLE_JDS.map((s, i) => (
-                    <button
-                      key={s.company}
-                      onClick={() => handleFillSample(i)}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-800 shadow-sm transition-colors hover:bg-brand-50 hover:text-brand-800"
-                    >
-                      + {s.company} ({s.role})
-                    </button>
-                  ))}
-                </div>
+                <button
+                  onClick={handleFillSample}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-bold text-slate-800 shadow-sm transition-colors hover:bg-brand-50 hover:text-brand-800"
+                >
+                  + {SAMPLE_JD.company} ({SAMPLE_JD.role})
+                </button>
               </div>
 
               <div className="mb-6 space-y-4">
@@ -208,7 +192,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                       type="text"
                       value={targetCompany}
                       onChange={(e) => setTargetCompany(e.target.value)}
-                      placeholder="예: TechNova"
+                      placeholder="지원하려는 기업명"
                       className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none"
                     />
                   </div>
@@ -221,7 +205,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                       type="text"
                       value={targetRole}
                       onChange={(e) => setTargetRole(e.target.value)}
-                      placeholder="예: 콘텐츠 기획자 / 웹툰 PD"
+                      placeholder="지원하려는 직무명"
                       className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none"
                     />
                   </div>
