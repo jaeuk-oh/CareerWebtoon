@@ -185,6 +185,9 @@ class InterviewResearchService:
             # runs noticeably longer than other evaluate_json calls in this codebase —
             # 4096 truncated mid-JSON in testing.
             max_tokens=8192,
+            # The prompt asks for Korean; this makes the code check it. A live run
+            # here returned Japanese connectives spliced into Korean sentences.
+            korean_only=True,
         )
 
         web_insights = result.get("web_insights", [])

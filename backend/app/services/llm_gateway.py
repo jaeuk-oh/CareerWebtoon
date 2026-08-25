@@ -5,6 +5,7 @@ from typing import AsyncGenerator
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from app.core.config import get_settings
+from app.services.korean_guard import enforce_korean
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class LLMGateway:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def generate_json(
         self, prompt: str, system_prompt: str = None, max_tokens: int = 2048,
-        timeout: float = HARD_CALL_TIMEOUT
+        timeout: float = HARD_CALL_TIMEOUT, korean_only: bool = False
     ) -> dict:
         try:
             response = await self._create(
@@ -77,10 +78,13 @@ class LLMGateway:
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
-            return json.loads(content)
+            result = json.loads(content)
         except Exception as e:
             logger.error(f"Error in generate_json: {e!r}")
             raise
+        # Outside the try: a guard failure must not be swallowed as a generation
+        # error and retried, which would re-run the whole (expensive) call.
+        return await enforce_korean(self, result) if korean_only else result
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def analyze(
@@ -103,7 +107,7 @@ class LLMGateway:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def evaluate_json(
         self, prompt: str, system_prompt: str = None, max_tokens: int = 2048,
-        timeout: float = HARD_CALL_TIMEOUT
+        timeout: float = HARD_CALL_TIMEOUT, korean_only: bool = False
     ) -> dict:
         try:
             response = await self._create(
@@ -115,10 +119,13 @@ class LLMGateway:
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
-            return json.loads(content)
+            result = json.loads(content)
         except Exception as e:
             logger.error(f"Error in evaluate_json: {e!r}")
             raise
+        # Outside the try: a guard failure must not be swallowed as a generation
+        # error and retried, which would re-run the whole (expensive) call.
+        return await enforce_korean(self, result) if korean_only else result
 
     async def stream_generate(
         self, prompt: str, system_prompt: str = None, model: str = None, timeout: float = 120.0

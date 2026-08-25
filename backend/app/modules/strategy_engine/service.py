@@ -54,7 +54,8 @@ class StrategyEngineService:
             strategy_result = await self.llm.evaluate_json(
                 prompt=context,
                 system_prompt=STRATEGY_SYSTEM,
-                max_tokens=4096
+                max_tokens=4096,
+                korean_only=True
             )
 
             primary_id = strategy_result.get("primary_experience_id")

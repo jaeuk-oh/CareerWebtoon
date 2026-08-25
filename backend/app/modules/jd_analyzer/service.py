@@ -24,7 +24,8 @@ class JDAnalyzerService:
         analysis_result = await self.llm.evaluate_json(
             prompt=prompt,
             system_prompt=JD_ANALYSIS_SYSTEM,
-            max_tokens=2048
+            max_tokens=2048,
+            korean_only=True
         )
         
         job_id = str(uuid.uuid4())

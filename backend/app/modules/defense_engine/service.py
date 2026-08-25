@@ -40,7 +40,8 @@ class DefenseEngineService:
             system_prompt=DEFENSE_SYSTEM,
             prompt=str(context),
             max_tokens=8192,
-            timeout=120.0
+            timeout=120.0,
+            korean_only=True
         )
         
         questions_data = generation.get("questions", [])
@@ -140,7 +141,8 @@ class DefenseEngineService:
         result = await self.llm.evaluate_json(
             system_prompt=ANSWER_FEEDBACK_SYSTEM,
             prompt=str(context),
-            max_tokens=512
+            max_tokens=512,
+            korean_only=True
         )
 
         feedback = result.get("feedback") or "답변을 다시 한번 구체적으로 정리해보세요."

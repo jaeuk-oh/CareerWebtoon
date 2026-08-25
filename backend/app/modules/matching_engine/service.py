@@ -61,7 +61,8 @@ class MatchingEngineService:
             match_result = await self.llm.evaluate_json(
                 prompt=context,
                 system_prompt=MATCHING_SYSTEM,
-                max_tokens=4096
+                max_tokens=4096,
+                korean_only=True
             )
 
             # Save matches
