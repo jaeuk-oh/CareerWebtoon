@@ -211,8 +211,10 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
         })}
       </div>
 
-      {/* Research panel */}
-      <div className="space-y-6">
+      {/* Research panel. min-w-0 is load-bearing: a `1fr` grid track defaults to
+          min-width:auto, so without it the long research text sets an intrinsic
+          minimum and the column blows past the viewport instead of wrapping. */}
+      <div className="min-w-0 space-y-6">
         <Card padded={false} className="flex min-h-[5.5rem] items-center px-5">
           <SectionHeading
             className="w-full"
@@ -268,13 +270,13 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
                   {research.personal_angles.map((angle, i) => (
                     <div key={i} className="overflow-hidden rounded-xl border border-slate-200">
                       <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2">
-                        <div className="bg-slate-50 p-3.5">
+                        <div className="min-w-0 bg-slate-50 p-3.5">
                           <span className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">
                             <Globe size={12} /> 이 팀의 기준
                           </span>
                           <p className="text-sm leading-relaxed text-slate-700">{angle.company_signal}</p>
                         </div>
-                        <div className="bg-slate-50 p-3.5">
+                        <div className="min-w-0 bg-slate-50 p-3.5">
                           <span className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">
                             <Briefcase size={12} /> 내가 쓴 내용
                           </span>
