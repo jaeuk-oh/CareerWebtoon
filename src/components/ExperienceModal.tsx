@@ -114,19 +114,24 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
       return;
     }
 
+    // Empty stays empty. These fields used to fall back to filler — a made-up period
+    // ("2023 - 2024"), a made-up metric, a made-up evidence source, and the input
+    // placeholders saved as if they were the user's own words. All of it then fed
+    // matching, document generation, and evidence validation as real material, which
+    // is precisely the fabrication this product exists to prevent.
     const expData = {
       title: title.trim(),
       organization: organization.trim(),
-      period: period.trim() || '2023 - 2024',
+      period: period.trim(),
       description: description.trim() || title.trim(),
       c3p4: {
-        customer: customer.trim() || '대상 사용자 / 고객',
-        problem: problem.trim() || '해결하고자 한 핵심 병목',
-        action: action.trim() || '수행한 핵심 기획 및 실행 행동',
-        product: product.trim() || '측정 가능한 수치 및 산출물 성과'
+        customer: customer.trim(),
+        problem: problem.trim(),
+        action: action.trim(),
+        product: product.trim()
       },
-      metrics: product ? [product] : ['소요시간 단축 및 효율 향상'],
-      evidenceSource: evidenceSource.trim() || '기획서 / GA4 보고서 데이터'
+      metrics: product.trim() ? [product.trim()] : [],
+      evidenceSource: evidenceSource.trim()
     };
 
     setIsSaving(true);
