@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS experiences (
 CREATE TABLE IF NOT EXISTS experience_3c4p (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     experience_id UUID REFERENCES experiences(id) ON DELETE CASCADE NOT NULL,
+    -- One-line summary: what was done and what it produced
+    headline TEXT,
     -- 3C
     customer JSONB DEFAULT '{}',
     company_context JSONB DEFAULT '{}',

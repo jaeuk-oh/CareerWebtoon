@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,7 +14,6 @@ import {
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
-import { ApiError, JDAnalysisResponse, MatchResponse, StrategyResponse } from '../lib/api';
 import { Badge, Button, Card, SectionHeading, cn } from '../components/ui';
 
 interface PipelineViewProps {
@@ -42,67 +41,52 @@ const STEPS = [
 ];
 
 export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
-  const { experiences, analyzeJob, matchExperiences, generateStrategyForJob, finalizePipeline, showToast, handleActionError } = useApp();
+  const {
+    experiences,
+    pipelineRun,
+    runPipelineAnalysis,
+    runPipelineStrategy,
+    setPipelineStep,
+    updatePipelineDraft,
+    resetPipelineRun,
+    finalizePipeline,
+    showToast
+  } = useApp();
 
-  const [step, setStep] = useState(1);
-  const [targetCompany, setTargetCompany] = useState('');
-  const [targetRole, setTargetRole] = useState('');
-  const [jdText, setJdText] = useState('');
-
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isPlanning, setIsPlanning] = useState(false);
-  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-
-  const [jd, setJd] = useState<JDAnalysisResponse | null>(null);
-  const [match, setMatch] = useState<MatchResponse | null>(null);
-  const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
+  // The whole wizard lives in AppContext so an analysis that takes tens of seconds
+  // keeps running (and its result is still here) when the user wanders off mid-run.
+  const { step, targetCompany, targetRole, jdText, jd, match, strategy, status, error: analyzeError } =
+    pipelineRun;
+  const isAnalyzing = status === 'analyzing';
+  const isPlanning = status === 'planning';
 
   const handleFillSample = () => {
-    setTargetCompany(SAMPLE_JD.company);
-    setTargetRole(SAMPLE_JD.role);
-    setJdText(SAMPLE_JD.jd);
+    updatePipelineDraft({
+      targetCompany: SAMPLE_JD.company,
+      targetRole: SAMPLE_JD.role,
+      jdText: SAMPLE_JD.jd
+    });
     showToast('샘플 공고가 입력되었습니다.', 'info');
   };
 
-  const handleStartAnalysis = async () => {
+  const handleStartAnalysis = () => {
     if (!jdText.trim()) {
       showToast('지원하시려는 채용 공고를 입력해주세요.', 'warning');
       return;
     }
     if (isAnalyzing) return;
-    setAnalyzeError(null);
-    setIsAnalyzing(true);
-    try {
-      const jdResult = await analyzeJob(targetCompany, targetRole, jdText);
-      const matchResult = await matchExperiences(jdResult.id);
-      setJd(jdResult);
-      setMatch(matchResult);
-      setStep(2);
-    } catch (err) {
-      const isQuotaError = err instanceof ApiError && err.status === 429;
-      setAnalyzeError(isQuotaError ? err.message : '채용 공고 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
-      handleActionError(err, '채용 공고 분석에 실패했습니다.');
-    } finally {
-      setIsAnalyzing(false);
-    }
+    runPipelineAnalysis(targetCompany, targetRole, jdText);
   };
 
-  const handleBuildStrategy = async () => {
+  const handleBuildStrategy = () => {
     if (!jd || isPlanning) return;
-    setIsPlanning(true);
-    try {
-      setStrategy(await generateStrategyForJob(jd.id));
-      setStep(3);
-    } catch (err) {
-      handleActionError(err, '지원 전략 수립에 실패했습니다. 잠시 후 다시 시도해주세요.');
-    } finally {
-      setIsPlanning(false);
-    }
+    runPipelineStrategy();
   };
 
   const handleFinalize = () => {
     if (!jd || !match || !strategy) return;
     finalizePipeline(jd, targetCompany, targetRole, jdText, match, strategy);
+    resetPipelineRun();
     onNavigate('editor');
   };
 
@@ -191,7 +175,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                       id="pipeline-company"
                       type="text"
                       value={targetCompany}
-                      onChange={(e) => setTargetCompany(e.target.value)}
+                      onChange={(e) => updatePipelineDraft({ targetCompany: e.target.value })}
                       placeholder="지원하려는 기업명"
                       className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none"
                     />
@@ -204,7 +188,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                       id="pipeline-role"
                       type="text"
                       value={targetRole}
-                      onChange={(e) => setTargetRole(e.target.value)}
+                      onChange={(e) => updatePipelineDraft({ targetRole: e.target.value })}
                       placeholder="지원하려는 직무명"
                       className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none"
                     />
@@ -220,7 +204,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
                     className="h-52 w-full resize-none rounded-xl border border-slate-200 p-3.5 text-sm leading-relaxed text-slate-900 focus:border-brand-500 focus:outline-none"
                     placeholder="채용 공고의 주요 업무, 자격 요건, 우대 사항 등을 복사하여 붙여넣으세요..."
                     value={jdText}
-                    onChange={(e) => setJdText(e.target.value)}
+                    onChange={(e) => updatePipelineDraft({ jdText: e.target.value })}
                   />
                 </div>
               </div>
@@ -283,7 +267,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
               </div>
 
               <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                <Button variant="ghost" onClick={() => setStep(1)}>
+                <Button variant="ghost" onClick={() => setPipelineStep(1)}>
                   이전 단계
                 </Button>
                 <Button onClick={handleBuildStrategy} isLoading={isPlanning} icon={!isPlanning ? <ArrowRight size={16} /> : undefined}>
@@ -332,7 +316,7 @@ export const PipelineView: React.FC<PipelineViewProps> = ({ onNavigate }) => {
               </div>
 
               <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                <Button variant="ghost" onClick={() => setStep(2)}>
+                <Button variant="ghost" onClick={() => setPipelineStep(2)}>
                   이전 단계
                 </Button>
                 <Button onClick={handleFinalize} icon={<ArrowRight size={16} />}>

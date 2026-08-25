@@ -7,7 +7,7 @@ from app.core.usage import check_usage_quota, record_usage
 from app.db.session import get_db
 from app.services.llm_gateway import LLMGateway, get_llm_gateway
 from app.services.search_gateway import SearchGateway, get_search_gateway
-from .schemas import InterviewResearchResponse
+from .schemas import CachedResearchItem, InterviewResearchResponse
 from .service import InterviewResearchService
 
 router = APIRouter()
@@ -19,6 +19,23 @@ def get_service(
     search: SearchGateway = Depends(get_search_gateway),
 ):
     return InterviewResearchService(db=db, llm=llm, search=search)
+
+
+@router.get("/", response_model=list[CachedResearchItem])
+async def list_cached_research(
+    current_user: dict = Depends(get_current_user),
+    service: InterviewResearchService = Depends(get_service),
+):
+    return await service.list_cached(current_user["sub"])
+
+
+@router.delete("/{job_id}", status_code=204)
+async def delete_cached_research(
+    job_id: str,
+    current_user: dict = Depends(get_current_user),
+    service: InterviewResearchService = Depends(get_service),
+):
+    await service.delete_cached(job_id, current_user["sub"])
 
 
 @router.get("/{job_id}", response_model=InterviewResearchResponse)

@@ -145,14 +145,29 @@ export interface BackendExperience {
   updated_at?: string;
 }
 
+/** One layer of beneficiary — the end user (primary) and the colleague who
+ * handles the work (secondary). */
+export interface CustomerTier {
+  who?: string;
+  needs?: string;
+}
+
 export interface ThreeCFourP {
-  customer?: { target?: string; problem?: string; needs?: string };
-  company_context?: { organization?: string; team?: string; role?: string; situation?: string; opportunity?: string };
-  competitor?: { research?: string; references?: string; alternatives?: string };
+  headline?: string;
+  customer?: { primary?: CustomerTier; secondary?: CustomerTier };
+  company_context?: {
+    organization?: string;
+    team?: string;
+    role?: string;
+    goal?: string;
+    problem?: string;
+    cause?: string;
+  };
+  competitor?: { researched?: string; findings?: string[] };
   place?: { actual_actions?: string[] };
-  product?: { deliverables?: string[]; results?: string[] };
-  price?: { time_invested?: string; cost_saved?: string; efficiency_gain?: string };
-  promotion?: { sharing?: string; impact?: string };
+  product?: { result?: string; significance?: string[] };
+  price?: { productivity?: string[] };
+  promotion?: { sharing?: string };
 }
 
 export interface EvidenceItem {
@@ -292,6 +307,14 @@ export interface PersonalAngle {
   interviewer_question: string;
   what_i_am_testing?: string | null;
   risk?: string | null;
+}
+
+/** A saved research row, for showing which cache slots are occupied. */
+export interface CachedResearchItem {
+  job_id: string;
+  company_name?: string | null;
+  position?: string | null;
+  updated_at: string;
 }
 
 export interface InterviewResearchResponse {
@@ -531,6 +554,9 @@ export const api = {
     // Cached — returns 404 (thrown as ApiError) until run() has been called for this job.
     get: (jobId: string) => get<InterviewResearchResponse>(`/interview-research/${jobId}`),
     // Costs an LLM+search call. Only call from an explicit user action (never on page load).
+    // Throws ApiError 409 when the cache is full — the message names the limit.
     run: (jobId: string) => post<InterviewResearchResponse>(`/interview-research/${jobId}`),
+    list: () => get<CachedResearchItem[]>('/interview-research/'),
+    remove: (jobId: string) => del<void>(`/interview-research/${jobId}`),
   },
 };

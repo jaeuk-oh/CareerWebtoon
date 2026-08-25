@@ -87,10 +87,13 @@ export const ExperienceModal: React.FC<ExperienceModalProps> = ({ isOpen, onClos
         metrics: [] as string[],
         evidenceSource
       };
+      // Saved silently: this row exists only so decompose has an id to work with,
+      // and a "등록되었습니다" toast here would land while the AI is still running.
+      // decomposeExperience announces completion once the analysis is actually done.
       if (expId) {
-        await updateExperience(expId, draft);
+        await updateExperience(expId, draft, { silent: true });
       } else {
-        const created = await addExperience(draft);
+        const created = await addExperience(draft, { silent: true });
         expId = created.id;
         setSavedExpId(expId);
       }

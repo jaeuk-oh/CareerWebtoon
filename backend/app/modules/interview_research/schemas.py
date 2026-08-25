@@ -30,6 +30,15 @@ class SourceItem(BaseModel):
     url: str
 
 
+class CachedResearchItem(BaseModel):
+    """A saved research row, for showing the user what's occupying their cache slots."""
+
+    job_id: str
+    company_name: str | None = None
+    position: str | None = None
+    updated_at: str
+
+
 class InterviewResearchResponse(BaseModel):
     job_id: str
     web_insights: list[WebInsight]

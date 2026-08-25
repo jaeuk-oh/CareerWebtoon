@@ -31,6 +31,13 @@ MAX_JD_TERMS_IN_QUERY = 4
 MAX_DOC_CHARS = 3000
 MAX_EXPERIENCES = 8
 
+# Each cached research row holds a full synthesis plus up to 12 sources. Keeping
+# every posting a user ever looked at would grow without bound for no benefit —
+# they're preparing for a handful of interviews at a time. Past this, the user is
+# asked to delete one rather than having the oldest silently evicted, since the
+# row cost real quota to produce.
+MAX_CACHED_RESEARCH = 3
+
 
 class InterviewResearchService:
     def __init__(self, db: AsyncSession, llm: LLMGateway, search: SearchGateway):
@@ -125,8 +132,64 @@ class InterviewResearchService:
             "created_at": row.created_at.isoformat(),
         }
 
+    async def list_cached(self, user_id: str) -> list[dict]:
+        """Every posting this user has research saved for, newest first."""
+        res = await self.db.execute(
+            text("""
+                SELECT r.job_id, j.company_name, j.position, r.updated_at
+                FROM interview_research r
+                JOIN jobs j ON j.id = r.job_id
+                WHERE r.user_id = :user_id
+                ORDER BY r.updated_at DESC
+            """),
+            {"user_id": user_id},
+        )
+        return [
+            {
+                "job_id": str(r.job_id),
+                "company_name": r.company_name,
+                "position": r.position,
+                "updated_at": r.updated_at.isoformat(),
+            }
+            for r in res.fetchall()
+        ]
+
+    async def delete_cached(self, job_id: str, user_id: str) -> None:
+        res = await self.db.execute(
+            text("DELETE FROM interview_research WHERE job_id = :job_id AND user_id = :user_id"),
+            {"job_id": job_id, "user_id": user_id},
+        )
+        if res.rowcount == 0:
+            raise AppException(status_code=404, detail="삭제할 리서치가 없습니다.")
+
+    async def _assert_cache_has_room(self, job_id: str, user_id: str) -> None:
+        """
+        Re-running research for a posting that already has a row replaces it, so only
+        a *new* posting can push the user over the limit. Checked before any search or
+        LLM spend, so hitting the limit costs nothing.
+        """
+        res = await self.db.execute(
+            text("""
+                SELECT
+                    count(*) AS total,
+                    count(*) FILTER (WHERE job_id = :job_id) AS this_job
+                FROM interview_research WHERE user_id = :user_id
+            """),
+            {"user_id": user_id, "job_id": job_id},
+        )
+        row = res.first()
+        if row.this_job == 0 and row.total >= MAX_CACHED_RESEARCH:
+            raise AppException(
+                status_code=409,
+                detail=(
+                    f"저장할 수 있는 리서치는 최대 {MAX_CACHED_RESEARCH}개입니다. "
+                    "기존 리서치를 하나 삭제한 뒤 다시 시도해주세요."
+                ),
+            )
+
     async def run_research(self, job_id: str, user_id: str) -> dict:
         job = await self._get_job(job_id, user_id)
+        await self._assert_cache_has_room(job_id, user_id)
         company = (job.company_name or "").strip()
         position = (job.position or "").strip()
         if not company:

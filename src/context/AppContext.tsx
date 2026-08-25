@@ -62,10 +62,17 @@ const removeAnnotation = (id: string) => {
 // quick-view fields the UI renders. Used for both an AI decomposition and a manually
 // saved breakdown — the two are indistinguishable once persisted.
 const flattenC3P4 = (c3p4: ThreeCFourP): Experience['c3p4'] => ({
-  customer: [c3p4.customer?.target, c3p4.customer?.problem, c3p4.customer?.needs].filter(Boolean).join(' / '),
-  problem: c3p4.company_context?.situation || c3p4.customer?.problem || '',
+  customer: [
+    c3p4.customer?.primary && [c3p4.customer.primary.who, c3p4.customer.primary.needs].filter(Boolean).join(' — '),
+    c3p4.customer?.secondary && [c3p4.customer.secondary.who, c3p4.customer.secondary.needs].filter(Boolean).join(' — ')
+  ]
+    .filter(Boolean)
+    .join(' / '),
+  // The cause is the more useful half to surface: the problem restates the symptom,
+  // the cause is what the applicant actually had to figure out.
+  problem: [c3p4.company_context?.problem, c3p4.company_context?.cause].filter(Boolean).join(' — '),
   action: (c3p4.place?.actual_actions || []).join(', '),
-  product: [...(c3p4.product?.results || []), ...(c3p4.product?.deliverables || [])].join(', ')
+  product: [c3p4.product?.result, ...(c3p4.product?.significance || [])].filter(Boolean).join(', ')
 });
 
 // The inverse of flattenC3P4 — maps the flat quick fields the user typed by hand back onto
@@ -74,10 +81,10 @@ const flattenC3P4 = (c3p4: ThreeCFourP): Experience['c3p4'] => ({
 // than being spread across several, the way an AI decomposition might populate them), which
 // keeps that round trip exact.
 const inflateC3P4 = (flat: Experience['c3p4']): ThreeCFourP => ({
-  customer: flat.customer ? { problem: flat.customer } : undefined,
-  company_context: flat.problem ? { situation: flat.problem } : undefined,
+  customer: flat.customer ? { primary: { who: flat.customer } } : undefined,
+  company_context: flat.problem ? { problem: flat.problem } : undefined,
   place: flat.action ? { actual_actions: [flat.action] } : undefined,
-  product: flat.product ? { results: [flat.product] } : undefined
+  product: flat.product ? { result: flat.product } : undefined
 });
 
 // metrics/evidenceSource still only have a local annotation, and only for evidence/anchors
@@ -129,6 +136,34 @@ export interface ConfirmDialogState {
   onConfirm: () => void;
 }
 
+/**
+ * The in-progress "새 지원" wizard, held here rather than in the Pipeline screen so
+ * a run that takes tens of seconds isn't thrown away when the user navigates off.
+ */
+export interface PipelineRun {
+  step: number;
+  targetCompany: string;
+  targetRole: string;
+  jdText: string;
+  jd: JDAnalysisResponse | null;
+  match: MatchResponse | null;
+  strategy: StrategyResponse | null;
+  status: 'idle' | 'analyzing' | 'planning';
+  error: string | null;
+}
+
+const INITIAL_PIPELINE_RUN: PipelineRun = {
+  step: 1,
+  targetCompany: '',
+  targetRole: '',
+  jdText: '',
+  jd: null,
+  match: null,
+  strategy: null,
+  status: 'idle',
+  error: null
+};
+
 interface AppContextType {
   user: UserProfile;
   loginWithGoogle: () => Promise<void>;
@@ -145,8 +180,15 @@ interface AppContextType {
 
   experiences: Experience[];
   experiencesLoading: boolean;
-  addExperience: (exp: Omit<Experience, 'id' | 'createdAt'>) => Promise<Experience>;
-  updateExperience: (id: string, exp: Partial<Experience>) => Promise<void>;
+  addExperience: (
+    exp: Omit<Experience, 'id' | 'createdAt'>,
+    opts?: { silent?: boolean }
+  ) => Promise<Experience>;
+  updateExperience: (
+    id: string,
+    exp: Partial<Experience>,
+    opts?: { silent?: boolean }
+  ) => Promise<void>;
   deleteExperience: (id: string) => void;
   importExperiencesFromFile: (file: File) => Promise<number>;
   decomposeExperience: (id: string) => Promise<void>;
@@ -157,6 +199,12 @@ interface AppContextType {
   analyzeJob: (targetCompany: string, targetRole: string, jdText: string) => Promise<JDAnalysisResponse>;
   matchExperiences: (jobId: string) => Promise<MatchResponse>;
   generateStrategyForJob: (jobId: string) => Promise<StrategyResponse>;
+  pipelineRun: PipelineRun;
+  runPipelineAnalysis: (targetCompany: string, targetRole: string, jdText: string) => Promise<void>;
+  runPipelineStrategy: () => Promise<void>;
+  setPipelineStep: (step: number) => void;
+  updatePipelineDraft: (patch: Partial<PipelineRun>) => void;
+  resetPipelineRun: () => void;
   finalizePipeline: (
     jd: JDAnalysisResponse,
     targetCompany: string,
@@ -245,6 +293,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [experiencesLoading, setExperiencesLoading] = useState(true);
   const [evidenceValidation, setEvidenceValidation] = useState<ValidationResponse | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [pipelineRun, setPipelineRun] = useState<PipelineRun>(INITIAL_PIPELINE_RUN);
+  // Async callbacks below close over the state at call time; this ref lets them read
+  // the current run without being re-created on every keystroke in the JD textarea.
+  const pipelineRunRef = useRef(pipelineRun);
+  pipelineRunRef.current = pipelineRun;
 
   const requestConfirm = (state: ConfirmDialogState) => setConfirmDialog(state);
   const closeConfirm = () => setConfirmDialog(null);
@@ -576,7 +629,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     Boolean(c3p4 && (c3p4.customer || c3p4.problem || c3p4.action || c3p4.product));
 
   // Experiences Action
-  const addExperience = async (data: Omit<Experience, 'id' | 'createdAt'>): Promise<Experience> => {
+  // `silent` exists for the AI-structuring flow, which saves the row only so the
+  // decompose call has an id to work with. Announcing "등록되었습니다" there would
+  // claim the work is done while the AI is still running.
+  const addExperience = async (
+    data: Omit<Experience, 'id' | 'createdAt'>,
+    opts?: { silent?: boolean }
+  ): Promise<Experience> => {
     const be = await api.experiences.create({
       title: data.title,
       company: data.organization,
@@ -589,11 +648,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     const newExp = { ...mergeExperience(be, loadAnnotations()), c3p4: data.c3p4 };
     setExperiences((prev) => [newExp, ...prev]);
-    showToast('새 3C4P 경험 자산이 등록되었습니다.', 'success');
+    if (!opts?.silent) showToast('새 3C4P 경험 자산이 등록되었습니다.', 'success');
     return newExp;
   };
 
-  const updateExperience = async (id: string, data: Partial<Experience>) => {
+  const updateExperience = async (
+    id: string,
+    data: Partial<Experience>,
+    opts?: { silent?: boolean }
+  ) => {
     await api.experiences.update(id, {
       title: data.title,
       company: data.organization,
@@ -613,7 +676,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setExperiences((prev) =>
       prev.map((e) => (e.id === id ? { ...e, ...data, updatedAt: new Date().toISOString() } : e))
     );
-    showToast('경험 자산이 정상 수정되었습니다.', 'success');
+    if (!opts?.silent) showToast('경험 자산이 정상 수정되었습니다.', 'success');
   };
 
   // Uploads a PDF/DOCX/TXT (portfolio, resume, whatever) and has the AI extract
@@ -657,6 +720,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setExperiences((prev) => prev.map((e) => (e.id === id ? { ...e, ...annotation, c3p4 } : e)));
     showToast('AI가 경험을 분석하여 3C4P 구조로 자동 변환했습니다!', 'success');
   };
+
+  // JD 분석 + 경험 매칭은 합쳐서 수십 초가 걸린다. 이 진행 상태를 Pipeline 화면의 로컬
+  // state로 들고 있으면 사용자가 다른 메뉴로 이동하는 순간 컴포넌트가 언마운트되면서
+  // 결과를 받을 곳이 사라진다 — 서버 작업은 끝나 있는데 화면만 처음으로 돌아가는 것이다.
+  // 그래서 실행 상태를 앱 전체가 공유하는 이곳에 둔다. 화면을 떠나도 계속 돌고, 돌아오면
+  // 진행 중이면 진행 중인 채로, 끝났으면 결과가 채워진 채로 이어진다.
+  const runPipelineAnalysis = async (targetCompany: string, targetRole: string, jdText: string) => {
+    setPipelineRun((prev) => ({
+      ...prev,
+      targetCompany,
+      targetRole,
+      jdText,
+      status: 'analyzing',
+      error: null
+    }));
+    try {
+      const jd = await analyzeJob(targetCompany, targetRole, jdText);
+      const match = await matchExperiences(jd.id);
+      setPipelineRun((prev) => ({ ...prev, jd, match, step: 2, status: 'idle' }));
+    } catch (err) {
+      const isQuota = err instanceof ApiError && err.status === 429;
+      setPipelineRun((prev) => ({
+        ...prev,
+        status: 'idle',
+        error: isQuota
+          ? (err as ApiError).message
+          : '채용 공고 분석에 실패했습니다. 잠시 후 다시 시도해주세요.'
+      }));
+      handleActionError(err, '채용 공고 분석에 실패했습니다.');
+    }
+  };
+
+  const runPipelineStrategy = async () => {
+    const jd = pipelineRunRef.current.jd;
+    if (!jd) return;
+    setPipelineRun((prev) => ({ ...prev, status: 'planning', error: null }));
+    try {
+      const strategy = await generateStrategyForJob(jd.id);
+      setPipelineRun((prev) => ({ ...prev, strategy, step: 3, status: 'idle' }));
+    } catch (err) {
+      setPipelineRun((prev) => ({ ...prev, status: 'idle' }));
+      handleActionError(err, '지원 전략 수립에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  };
+
+  const setPipelineStep = (step: number) => setPipelineRun((prev) => ({ ...prev, step }));
+  const updatePipelineDraft = (patch: Partial<PipelineRun>) =>
+    setPipelineRun((prev) => ({ ...prev, ...patch }));
+  const resetPipelineRun = () => setPipelineRun(INITIAL_PIPELINE_RUN);
 
   // 지원 만들기 액션 — JD 분석 / 경험 매칭 / 전략 수립을 각 단계에서 따로 호출해서,
   // 지원 만들기 화면이 실제 API 응답을 단계별로 그대로 보여줄 수 있게 한다.
@@ -996,6 +1108,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         analyzeJob,
         matchExperiences,
         generateStrategyForJob,
+        pipelineRun,
+        runPipelineAnalysis,
+        runPipelineStrategy,
+        setPipelineStep,
+        updatePipelineDraft,
+        resetPipelineRun,
         finalizePipeline,
         deletePipeline,
         documentDraft,

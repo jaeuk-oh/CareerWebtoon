@@ -44,13 +44,14 @@ class ExperienceEngineService:
         three_c_four_p_id = str(uuid.uuid4())
         
         insert_3c4p_query = text("""
-            INSERT INTO experience_3c4p (id, experience_id, customer, company_context, competitor, place, product, price, promotion)
-            VALUES (:id, :exp_id, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
+            INSERT INTO experience_3c4p (id, experience_id, headline, customer, company_context, competitor, place, product, price, promotion)
+            VALUES (:id, :exp_id, :headline, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
         """)
-        
+
         await self.db.execute(insert_3c4p_query, {
             "id": three_c_four_p_id,
             "exp_id": experience_id,
+            "headline": three_c_four_p_res.get('headline'),
             "customer": json.dumps(three_c_four_p_res.get('customer', {})),
             "company_context": json.dumps(three_c_four_p_res.get('company_context', {})),
             "competitor": json.dumps(three_c_four_p_res.get('competitor', {})),
@@ -154,12 +155,13 @@ class ExperienceEngineService:
         new_id = str(uuid.uuid4())
         await self.db.execute(
             text("""
-                INSERT INTO experience_3c4p (id, experience_id, customer, company_context, competitor, place, product, price, promotion)
-                VALUES (:id, :exp_id, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
+                INSERT INTO experience_3c4p (id, experience_id, headline, customer, company_context, competitor, place, product, price, promotion)
+                VALUES (:id, :exp_id, :headline, :customer, :company_context, :competitor, :place, :product, :price, :promotion)
             """),
             {
                 "id": new_id,
                 "exp_id": experience_id,
+                "headline": data.headline,
                 "customer": json.dumps(data.customer.model_dump() if data.customer else {}),
                 "company_context": json.dumps(data.company_context.model_dump() if data.company_context else {}),
                 "competitor": json.dumps(data.competitor.model_dump() if data.competitor else {}),

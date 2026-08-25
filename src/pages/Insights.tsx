@@ -10,10 +10,11 @@ import {
   Sparkles,
   Tag,
   Target,
+  Trash2,
   UserCheck
 } from 'lucide-react';
 import { ViewState } from '../types/navigation';
-import { api, ApiError, JobResponse, InterviewResearchResponse } from '../lib/api';
+import { api, ApiError, CachedResearchItem, JobResponse, InterviewResearchResponse } from '../lib/api';
 import { useApp } from '../context/AppContext';
 import { Badge, BadgeTone, Button, Card, EmptyState, SectionHeading } from '../components/ui';
 import { cn } from '../components/ui';
@@ -29,6 +30,10 @@ const CATEGORY_LABEL: Record<string, string> = {
   pressure: '압박 질문'
 };
 
+// Mirrors MAX_CACHED_RESEARCH in the backend service — the server is the authority
+// and rejects with 409, this only drives the counter shown before you hit it.
+const MAX_CACHED_RESEARCH = 3;
+
 const CATEGORY_TONE: Record<string, BadgeTone> = {
   technical: 'brand',
   behavioral: 'success',
@@ -37,7 +42,7 @@ const CATEGORY_TONE: Record<string, BadgeTone> = {
 };
 
 const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
-  const { showToast, handleActionError, activePipelineId } = useApp();
+  const { showToast, handleActionError, activePipelineId, requestConfirm } = useApp();
 
   const [jobs, setJobs] = useState<JobResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +52,22 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
   const [research, setResearch] = useState<InterviewResearchResponse | null>(null);
   const [isResearchLoading, setIsResearchLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  // Which postings currently hold a saved research row. Drives the "N/3 저장됨"
+  // counter and the per-card 저장됨 badge, so the limit is visible before the user
+  // hits it rather than only in the error.
+  const [cached, setCached] = useState<CachedResearchItem[]>([]);
+
+  const refreshCached = React.useCallback(async () => {
+    try {
+      setCached(await api.interviewResearch.list());
+    } catch (err) {
+      console.error('Failed to load cached research list', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCached();
+  }, [refreshCached]);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,12 +140,37 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
     try {
       const result = await api.interviewResearch.run(selectedId);
       setResearch(result);
+      await refreshCached();
       showToast('웹 리서치 기반 면접 인사이트를 생성했습니다.', 'success');
     } catch (err) {
-      handleActionError(err, '리서치에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      // 409 means the cache is full; the server's message already names the limit
+      // and what to do, so surface it as-is rather than a generic failure.
+      if (err instanceof ApiError && err.status === 409) {
+        showToast(err.message, 'warning');
+      } else {
+        handleActionError(err, '리서치에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      }
     } finally {
       setIsRunning(false);
     }
+  };
+
+  const deleteResearch = (jobId: string, label: string) => {
+    requestConfirm({
+      title: '저장된 리서치를 삭제할까요?',
+      message: `'${label}'의 리서치 결과가 삭제됩니다. 다시 보려면 리서치를 새로 실행해야 하고, 그때 이용권이 1회 차감됩니다.`,
+      confirmLabel: '삭제하기',
+      onConfirm: async () => {
+        try {
+          await api.interviewResearch.remove(jobId);
+          if (jobId === selectedId) setResearch(null);
+          await refreshCached();
+          showToast('저장된 리서치를 삭제했습니다.', 'success');
+        } catch (err) {
+          handleActionError(err, '리서치 삭제에 실패했습니다.');
+        }
+      }
+    });
   };
 
   if (loading) {
@@ -171,7 +217,12 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
         <Card padded={false} className="flex min-h-[5.5rem] items-center justify-between gap-2 px-4">
           <div className="min-w-0">
             <h3 className="text-base font-bold text-slate-900">등록된 공고</h3>
-            <p className="mt-0.5 text-sm text-slate-500">{jobs.length}건</p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {jobs.length}건 · 리서치 저장{' '}
+              <strong className={cn(cached.length >= MAX_CACHED_RESEARCH && 'text-amber-700')}>
+                {cached.length}/{MAX_CACHED_RESEARCH}
+              </strong>
+            </p>
           </div>
           <Button size="sm" variant="ghost" icon={<Plus size={14} />} onClick={() => onNavigate('pipeline')}>
             추가
@@ -181,12 +232,22 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
         {jobs.map((job) => {
           const isActive = job.id === selectedId;
           const isCurrent = job.id === activePipelineId;
+          const isCached = cached.some((c) => c.job_id === job.id);
+          const label = `${job.company_name || '기업 미상'} · ${job.position || '직무 미상'}`;
           return (
-            <button
+            <div
               key={job.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setSelectedId(job.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedId(job.id);
+                }
+              }}
               className={cn(
-                'w-full rounded-2xl border p-4 text-left shadow-sm transition-all',
+                'w-full cursor-pointer rounded-2xl border p-4 text-left shadow-sm transition-all',
                 isActive
                   ? 'border-brand-600 bg-brand-50'
                   : 'border-slate-200 bg-white hover:border-slate-300'
@@ -196,17 +257,31 @@ const InsightsView: React.FC<InsightsViewProps> = ({ onNavigate }) => {
                 <h4 className="min-w-0 truncate font-bold text-slate-900">
                   {job.company_name || '기업 미상'}
                 </h4>
-                {isCurrent && (
-                  <Badge tone="success" className="flex-shrink-0">
-                    작성 중
-                  </Badge>
-                )}
+                <div className="flex flex-shrink-0 items-center gap-1.5">
+                  {isCurrent && <Badge tone="success">작성 중</Badge>}
+                  {isCached && <Badge tone="brand">저장됨</Badge>}
+                </div>
               </div>
               <p className="mt-1 text-sm text-slate-600">{job.position || '직무 미상'}</p>
-              <p className="mt-2.5 text-xs text-slate-400">
-                {new Date(job.created_at).toLocaleDateString()} 분석됨
-              </p>
-            </button>
+              <div className="mt-2.5 flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-400">
+                  {new Date(job.created_at).toLocaleDateString()} 분석됨
+                </p>
+                {isCached && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteResearch(job.id, label);
+                    }}
+                    aria-label={`${label} 리서치 삭제`}
+                    title="저장된 리서치 삭제"
+                    className="rounded-lg p-1 text-slate-300 transition-colors hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
