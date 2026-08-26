@@ -1,6 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.exceptions import AppException
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.usage import check_usage_quota, record_usage
@@ -21,6 +22,12 @@ def get_experience_engine_service(db: AsyncSession = Depends(get_db)) -> Experie
 # LLM gateway giving up after retries — which is a server/upstream problem, not a
 # malformed request, so it must not be reported as 400.
 def _raise_mapped(e: Exception):
+    # A deliberate status from the service (the grounding guard's 422 for an
+    # experience too thin to decompose) already carries the message the user needs.
+    # Rewriting it as 502 "잠시 후 다시 시도해주세요" would tell them to retry something
+    # that will fail identically until they add more detail.
+    if isinstance(e, (AppException, HTTPException)):
+        raise e
     if isinstance(e, ValueError):
         raise HTTPException(status_code=404, detail=str(e))
     logger.error(f"experience-engine request failed: {e}")
