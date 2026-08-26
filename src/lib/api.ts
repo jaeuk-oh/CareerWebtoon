@@ -378,6 +378,21 @@ export interface RewriteResponse {
   rationale: string;
 }
 
+export type CritiqueCategory = 'strength' | 'improvement' | 'suggestion';
+
+export interface CritiqueSpan {
+  span_id: string;
+  span_text: string;
+  category: CritiqueCategory;
+  comment: string;
+}
+
+export interface CritiqueResponse {
+  document_id: string;
+  spans: CritiqueSpan[];
+  overall_comment: string;
+}
+
 export interface ClaimValidation {
   claim_id: string;
   claim_text: string;
@@ -524,6 +539,8 @@ export const api = {
         claim_text: claimText,
         instruction,
       }),
+    critique: (docId: string) =>
+      post<CritiqueResponse>(`/documents/generate/documents/${docId}/critique`, {}),
   },
   validation: {
     validate: (generatedDocumentId: string) =>

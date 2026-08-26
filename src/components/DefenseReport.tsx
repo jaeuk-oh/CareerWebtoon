@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { AlertTriangle, CheckCircle2, FileQuestion, Lightbulb, ShieldCheck, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileQuestion, Lightbulb, TrendingUp } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Badge, Card, CircularGauge, EmptyState } from './ui';
 
 /**
- * A summary of what actually happened in this application's document + defence
- * practice — built only from real data (validation results, answered questions).
+ * A summary of what actually happened in this application's defence practice — built
+ * only from real data (answered questions).
  *
  * The reference mock's report showed a "confidence index" and speech-pace metrics
  * derived from voice — there is no microphone pipeline here and no way to measure
@@ -13,7 +13,7 @@ import { Badge, Card, CircularGauge, EmptyState } from './ui';
  * figure here traces back to something the backend actually computed.
  */
 export const DefenseReport: React.FC = () => {
-  const { documentDraft, evidenceValidation, defenseMessages } = useApp();
+  const { documentDraft, defenseMessages } = useApp();
 
   const answeredQuestions = useMemo(
     () =>
@@ -30,22 +30,21 @@ export const DefenseReport: React.FC = () => {
     [defenseMessages]
   );
 
-  const hasValidation = Boolean(evidenceValidation);
   const hasAnyAnswers = answeredQuestions.length > 0;
 
-  if (!hasValidation && !hasAnyAnswers) {
+  if (!hasAnyAnswers) {
     return (
       <EmptyState
         icon={<FileQuestion size={26} />}
         title="아직 리포트로 정리할 결과가 없습니다"
-        description="지원서 작성 화면에서 근거 검증을 실행하거나, 옆의 '예상 질문 연습'에서 질문에 답변해보세요."
+        description="지원서 작성 화면 옆의 '예상 질문 연습'에서 질문에 답변해보세요."
       />
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card className="flex flex-col items-center">
           <h3 className="mb-4 w-full text-sm font-bold uppercase tracking-wide text-slate-500">방어 점수</h3>
           {documentDraft.defenseScore > 0 ? (
@@ -62,33 +61,6 @@ export const DefenseReport: React.FC = () => {
             />
           ) : (
             <p className="py-8 text-center text-sm text-slate-400">아직 답변 연습 기록이 없습니다.</p>
-          )}
-        </Card>
-
-        <Card>
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-            <ShieldCheck size={16} /> 근거 검증
-          </h3>
-          {hasValidation && evidenceValidation ? (
-            <>
-              <div className="mb-4 text-4xl font-bold text-slate-900">
-                {Math.round(evidenceValidation.overall_score * 100)}
-                <span className="text-lg font-normal text-slate-500">점</span>
-              </div>
-              <div className="flex gap-2 text-xs font-bold">
-                <span className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-center text-emerald-800">
-                  검증 {evidenceValidation.verified}
-                </span>
-                <span className="flex-1 rounded-lg border border-amber-200 bg-amber-50 py-1.5 text-center text-amber-800">
-                  주의 {evidenceValidation.flagged}
-                </span>
-                <span className="flex-1 rounded-lg border border-rose-200 bg-rose-50 py-1.5 text-center text-rose-800">
-                  미검증 {evidenceValidation.unverified}
-                </span>
-              </div>
-            </>
-          ) : (
-            <p className="py-8 text-center text-sm text-slate-400">아직 근거 검증을 실행하지 않았습니다.</p>
           )}
         </Card>
 

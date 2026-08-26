@@ -13,6 +13,7 @@ import {
   PencilLine,
   Send,
   ShieldAlert,
+  Sparkles,
   Upload,
   Wand2,
   ShieldCheck,
@@ -21,15 +22,14 @@ import {
 import { motion } from 'motion/react';
 import { ViewState } from '../types/navigation';
 import { useApp } from '../context/AppContext';
-import { api, ClaimValidation, FrontendDocType, RewriteResponse } from '../lib/api';
+import { api, CritiqueSpan, FrontendDocType, RewriteResponse } from '../lib/api';
 import {
-  CLAIM_STATUS_META,
-  claimCardId,
-  claimMarkId,
-  claimStatus,
-  locatableClaimIds
-} from '../lib/claims';
-import { DocumentCanvas } from '../components/DocumentCanvas';
+  CRITIQUE_CATEGORY_META,
+  critiqueCardId,
+  critiqueMarkId,
+  locatableCritiqueSpanIds
+} from '../lib/critique';
+import { CritiqueCanvas } from '../components/CritiqueCanvas';
 import { Badge, Button, EmptyState, cn } from '../components/ui';
 import { wordDiff } from '../lib/diff';
 
@@ -43,7 +43,7 @@ const DOC_TYPES: { id: FrontendDocType; label: string; hint: string }[] = [
   { id: 'coverLetter', label: '자기소개서', hint: '스토리 중심' }
 ];
 
-type PanelTab = 'strategy' | 'evidence' | 'defense';
+type PanelTab = 'strategy' | 'critique' | 'defense';
 type CanvasMode = 'edit' | 'review';
 
 export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
@@ -52,8 +52,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     updateDocumentContent,
     generateDocument,
     importDocumentText,
-    evidenceValidation,
-    runEvidenceValidation,
+    critique,
+    runCritique,
     defenseMessages,
     sendDefenseMessage,
     runDefenseGeneration,
@@ -67,19 +67,19 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     handleActionError
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<PanelTab>('evidence');
+  const [activeTab, setActiveTab] = useState<PanelTab>('critique');
   const [docType, setDocType] = useState<FrontendDocType>('coverLetter');
   const [mode, setMode] = useState<CanvasMode>('edit');
-  const [activeClaimId, setActiveClaimId] = useState<string | null>(null);
+  const [activeSpanId, setActiveSpanId] = useState<string | null>(null);
   const [userInputMessage, setUserInputMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
+  const [isCritiquing, setIsCritiquing] = useState(false);
   const [isGeneratingDefense, setIsGeneratingDefense] = useState(false);
   const [isSendingAnswer, setIsSendingAnswer] = useState(false);
-  const [rewritingClaimId, setRewritingClaimId] = useState<string | null>(null);
-  const [proposal, setProposal] = useState<(RewriteResponse & { claimId: string }) | null>(null);
+  const [rewritingSpanId, setRewritingSpanId] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<(RewriteResponse & { spanId: string }) | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -91,8 +91,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const activePipeline = pipelines.find((p) => p.id === activePipelineId) || pipelines[0];
   const generatedDocId = documentDraft.generatedDocIds?.[docType];
   const hasGeneratedDoc = Boolean(generatedDocId);
-  const isValidationCurrent = Boolean(
-    evidenceValidation && generatedDocId && evidenceValidation.document_id === generatedDocId
+  const isCritiqueCurrent = Boolean(
+    critique && generatedDocId && critique.document_id === generatedDocId
   );
 
   const currentText =
@@ -102,18 +102,18 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
       ? documentDraft.careerText
       : documentDraft.coverLetterText;
 
-  const claims = useMemo(
-    () => (isValidationCurrent && evidenceValidation ? evidenceValidation.claims : []),
-    [isValidationCurrent, evidenceValidation]
+  const critiqueSpans = useMemo(
+    () => (isCritiqueCurrent && critique ? critique.spans : []),
+    [isCritiqueCurrent, critique]
   );
 
-  // Claims are located in the document by exact string match, so editing a validated
+  // Spans are located in the document by exact string match, so editing a commented-on
   // sentence quietly drops its highlight. Surface that instead of letting the count in
   // the panel silently disagree with what's underlined in the text.
-  const locatable = useMemo(() => locatableClaimIds(currentText, claims), [currentText, claims]);
-  const unlocatableCount = claims.length - locatable.size;
+  const locatable = useMemo(() => locatableCritiqueSpanIds(currentText, critiqueSpans), [currentText, critiqueSpans]);
+  const unlocatableCount = critiqueSpans.length - locatable.size;
 
-  const canReview = claims.length > 0;
+  const canReview = critiqueSpans.length > 0;
   useEffect(() => {
     if (!canReview && mode === 'review') setMode('edit');
   }, [canReview, mode]);
@@ -122,8 +122,8 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     if (activeTab === 'defense') chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [defenseMessages, activeTab, isSendingAnswer]);
 
-  // Debounced autosave. This only pushes the text — re-deriving claims costs an LLM
-  // call and is deferred until the user actually validates.
+  // Debounced autosave. This only pushes the text — re-running critique costs an LLM
+  // call and is deferred until the user actually asks for it.
   useEffect(() => {
     if (!generatedDocId) return;
     if (lastSavedRef.current[generatedDocId] === undefined) {
@@ -150,10 +150,10 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentText, generatedDocId, docType]);
 
-  const focusClaim = (claimId: string, target: 'card' | 'mark') => {
-    setActiveClaimId(claimId);
-    if (target === 'card') setActiveTab('evidence');
-    const id = target === 'card' ? claimCardId(claimId) : claimMarkId(claimId);
+  const focusSpan = (spanId: string, target: 'card' | 'mark') => {
+    setActiveSpanId(spanId);
+    if (target === 'card') setActiveTab('critique');
+    const id = target === 'card' ? critiqueCardId(spanId) : critiqueMarkId(spanId);
     // Let the panel switch render before scrolling to the element inside it.
     requestAnimationFrame(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -204,17 +204,17 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleRunValidation = async () => {
-    if (isValidating) return;
-    setIsValidating(true);
+  const handleRunCritique = async () => {
+    if (isCritiquing) return;
+    setIsCritiquing(true);
     try {
-      await runEvidenceValidation(docType);
-      setActiveTab('evidence');
+      await runCritique(docType);
+      setActiveTab('critique');
       setMode('review');
     } catch (err) {
-      handleActionError(err, '근거 검증에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      handleActionError(err, 'AI 첨삭에 실패했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
-      setIsValidating(false);
+      setIsCritiquing(false);
     }
   };
 
@@ -230,17 +230,18 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleRewrite = async (claim: ClaimValidation) => {
-    if (rewritingClaimId) return;
-    setRewritingClaimId(claim.claim_id);
+  const handleRewrite = async (span: CritiqueSpan) => {
+    if (rewritingSpanId) return;
+    setRewritingSpanId(span.span_id);
     setProposal(null);
     try {
-      const result = await rewriteClaim(docType, claim.claim_text);
-      setProposal({ ...result, claimId: claim.claim_id });
+      const instruction = `첨삭 의견: ${span.comment}`;
+      const result = await rewriteClaim(docType, span.span_text, instruction);
+      setProposal({ ...result, spanId: span.span_id });
     } catch (err) {
       handleActionError(err, '문장 재작성에 실패했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
-      setRewritingClaimId(null);
+      setRewritingSpanId(null);
     }
   };
 
@@ -249,7 +250,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
     applyRewrite(docType, proposal.original, proposal.rewritten);
     setProposal(null);
     setMode('edit');
-    showToast('수정안을 본문에 적용했습니다. 근거 검증을 다시 실행해 확인해보세요.', 'success');
+    showToast('수정안을 본문에 적용했습니다. 첨삭을 다시 받아 확인해보세요.', 'success');
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -269,7 +270,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
   const wordCount = currentText.trim() ? currentText.trim().split(/\s+/).length : 0;
   const activeDocMeta = DOC_TYPES.find((d) => d.id === docType)!;
 
-  // Document generation, validation and defence questions are all keyed to a job, so
+  // Document generation, critique and defence questions are all keyed to a job, so
   // there is nothing meaningful to show — or generate — before an application exists.
   if (!activePipeline) {
     return (
@@ -278,7 +279,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
           className="max-w-lg"
           icon={<FileQuestion size={26} />}
           title="아직 진행 중인 지원이 없습니다"
-          description="채용 공고를 분석해 지원을 만들면, 그 공고에 맞춘 지원서 초안을 생성하고 근거를 검증할 수 있습니다."
+          description="채용 공고를 분석해 지원을 만들면, 그 공고에 맞춘 지원서 초안을 생성하고 AI 첨삭을 받을 수 있습니다."
           action={
             <Button icon={<ArrowRight size={16} />} onClick={() => onNavigate('pipeline')}>
               새 지원 시작하기
@@ -372,14 +373,14 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                 <button
                   onClick={() => canReview && setMode('review')}
                   disabled={!canReview}
-                  title={canReview ? undefined : '근거 검증을 실행하면 본문에 검증 결과가 표시됩니다.'}
+                  title={canReview ? undefined : 'AI 첨삭을 받으면 본문에 첨삭 의견이 표시됩니다.'}
                   className={cn(
                     'flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-bold transition-colors',
                     mode === 'review' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900',
                     !canReview && 'cursor-not-allowed opacity-50'
                   )}
                 >
-                  <Eye size={15} /> 검증 보기
+                  <Eye size={15} /> 첨삭 보기
                   {canReview && <span className="text-xs text-slate-400">{locatable.size}</span>}
                 </button>
               </div>
@@ -416,18 +417,18 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900">
                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
                 <span>
-                  검증된 주장 {claims.length}건 중 {unlocatableCount}건은 본문에서 찾지 못해 표시되지 않았습니다.
-                  문서를 수정했다면 검증을 다시 실행해주세요.
+                  첨삭 의견 {critiqueSpans.length}건 중 {unlocatableCount}건은 본문에서 찾지 못해 표시되지 않았습니다.
+                  문서를 수정했다면 첨삭을 다시 받아주세요.
                 </span>
               </div>
             )}
 
             {mode === 'review' ? (
-              <DocumentCanvas
+              <CritiqueCanvas
                 content={currentText}
-                claims={claims}
-                activeClaimId={activeClaimId}
-                onSelectClaim={(id) => focusClaim(id, 'card')}
+                spans={critiqueSpans}
+                activeSpanId={activeSpanId}
+                onSelectSpan={(id) => focusSpan(id, 'card')}
               />
             ) : (
               <textarea
@@ -445,7 +446,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
           <div className="flex gap-1.5 border-b border-slate-200 bg-slate-50 p-2">
             {([
               { id: 'strategy', label: '지원 전략' },
-              { id: 'evidence', label: '근거 검증' },
+              { id: 'critique', label: '첨삭' },
               { id: 'defense', label: '면접 방어' }
             ] as { id: PanelTab; label: string }[]).map((tab) => (
               <button
@@ -484,71 +485,59 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
               </div>
             )}
 
-            {/* --- Evidence validation --- */}
-            {activeTab === 'evidence' && (
+            {/* --- Writing critique --- */}
+            {activeTab === 'critique' && (
               <>
                 {!hasGeneratedDoc ? (
                   <EmptyState
                     icon={<FileQuestion size={24} />}
-                    title="검증할 초안이 없습니다"
+                    title="첨삭할 초안이 없습니다"
                     description="'AI 초안 생성'으로 지원서를 먼저 만들어주세요."
                   />
                 ) : (
                   <>
                     <Button
                       fullWidth
-                      onClick={handleRunValidation}
-                      isLoading={isValidating}
-                      icon={<ShieldCheck size={15} />}
+                      onClick={handleRunCritique}
+                      isLoading={isCritiquing}
+                      icon={<Sparkles size={15} />}
                     >
-                      {isValidating ? '근거 검증 실행 중...' : isValidationCurrent ? '근거 검증 다시 실행' : '근거 검증 실행'}
+                      {isCritiquing ? 'AI 첨삭 중...' : isCritiqueCurrent ? 'AI 첨삭 다시 받기' : 'AI 첨삭 받기'}
                     </Button>
 
-                    {isValidationCurrent && evidenceValidation && (
+                    {isCritiqueCurrent && critique && (
                       <>
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                          <div className="mb-3 flex items-center justify-between">
-                            <span className="text-sm font-bold text-slate-900">종합 검증 점수</span>
-                            <span className="text-xl font-bold text-slate-900">
-                              {Math.round(evidenceValidation.overall_score * 100)}
-                              <span className="text-sm text-slate-500">점</span>
+                        {critique.overall_comment && (
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-brand-600">
+                              총평
                             </span>
+                            <p className="text-sm leading-relaxed text-slate-800">{critique.overall_comment}</p>
                           </div>
-                          <div className="flex gap-2 text-xs font-bold">
-                            <span className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-center text-emerald-800">
-                              검증됨 {evidenceValidation.verified}
-                            </span>
-                            <span className="flex-1 rounded-lg border border-amber-200 bg-amber-50 py-1.5 text-center text-amber-800">
-                              주의 {evidenceValidation.flagged}
-                            </span>
-                            <span className="flex-1 rounded-lg border border-rose-200 bg-rose-50 py-1.5 text-center text-rose-800">
-                              미검증 {evidenceValidation.unverified}
-                            </span>
-                          </div>
-                        </div>
+                        )}
 
-                        {evidenceValidation.claims.length === 0 ? (
+                        {critiqueSpans.length === 0 ? (
                           <p className="py-4 text-center text-sm text-slate-500">
-                            문서에서 검증할 주장이 발견되지 않았습니다.
+                            AI가 문장 단위로 첨삭할 부분을 찾지 못했습니다.
                           </p>
                         ) : (
-                          evidenceValidation.claims.map((claim) => {
-                            const status = claimStatus(claim);
-                            const meta = CLAIM_STATUS_META[status];
-                            const canHighlight = locatable.has(claim.claim_id);
-                            const isActive = activeClaimId === claim.claim_id;
+                          critiqueSpans.map((span) => {
+                            const meta = CRITIQUE_CATEGORY_META[span.category];
+                            const canHighlight = locatable.has(span.span_id);
+                            const isActive = activeSpanId === span.span_id;
+                            const canRewrite = span.category !== 'strength';
 
                             return (
                               <div
-                                key={claim.claim_id}
-                                id={claimCardId(claim.claim_id)}
+                                key={span.span_id}
+                                id={critiqueCardId(span.span_id)}
                                 className={cn(
                                   'rounded-2xl border bg-white p-4 shadow-sm transition-all',
-                                  status === 'VERIFIED'
+                                  span.category === 'strength'
                                     ? 'border-slate-200 border-l-4 border-l-emerald-500 opacity-70 hover:opacity-100'
-                                    : status === 'FLAGGED'
+                                    : span.category === 'improvement'
                                     ? 'border-amber-200 border-l-4 border-l-amber-500'
-                                    : 'border-rose-200 border-l-4 border-l-rose-500',
+                                    : 'border-brand-200 border-l-4 border-l-brand-500',
                                   isActive && 'opacity-100 ring-2 ring-brand-400'
                                 )}
                               >
@@ -556,7 +545,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                                   <Badge
                                     tone={meta.tone}
                                     icon={
-                                      status === 'VERIFIED' ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />
+                                      span.category === 'strength' ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />
                                     }
                                   >
                                     {meta.label}
@@ -565,7 +554,7 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                                     <button
                                       onClick={() => {
                                         setMode('review');
-                                        focusClaim(claim.claim_id, 'mark');
+                                        focusSpan(span.span_id, 'mark');
                                       }}
                                       className="flex-shrink-0 text-xs font-bold text-brand-600 hover:underline"
                                     >
@@ -574,34 +563,26 @@ export const EditorView: React.FC<EditorViewProps> = ({ onNavigate }) => {
                                   )}
                                 </div>
 
-                                <p className="text-sm leading-relaxed text-slate-800">{claim.claim_text}</p>
+                                <p className="text-sm leading-relaxed text-slate-800">{span.span_text}</p>
 
-                                {claim.evidence_text && (
-                                  <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs leading-relaxed text-slate-600">
-                                    근거: {claim.evidence_text}
-                                  </p>
-                                )}
+                                <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs leading-relaxed text-slate-600">
+                                  {span.comment}
+                                </p>
 
-                                {claim.issues.length > 0 && (
-                                  <div className="mt-2.5 rounded-xl border-l-2 border-amber-400 bg-amber-50 p-2.5 text-xs font-medium leading-relaxed text-amber-950">
-                                    {claim.issues.join(' / ')}
-                                  </div>
-                                )}
-
-                                {status !== 'VERIFIED' && proposal?.claimId !== claim.claim_id && (
+                                {canRewrite && proposal?.spanId !== span.span_id && (
                                   <Button
                                     size="sm"
                                     variant="secondary"
                                     className="mt-3"
                                     icon={<Wand2 size={13} />}
-                                    isLoading={rewritingClaimId === claim.claim_id}
-                                    onClick={() => handleRewrite(claim)}
+                                    isLoading={rewritingSpanId === span.span_id}
+                                    onClick={() => handleRewrite(span)}
                                   >
-                                    {rewritingClaimId === claim.claim_id ? '다시 쓰는 중...' : '이 문장 다시 쓰기'}
+                                    {rewritingSpanId === span.span_id ? '다시 쓰는 중...' : '이 문장 다시 쓰기'}
                                   </Button>
                                 )}
 
-                                {proposal?.claimId === claim.claim_id && (
+                                {proposal?.spanId === span.span_id && (
                                   <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 p-3">
                                     <span className="text-xs font-bold text-brand-900">AI 수정안</span>
                                     <p className="mt-1.5 text-sm leading-relaxed text-slate-900">

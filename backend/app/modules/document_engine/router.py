@@ -13,6 +13,7 @@ from .schemas import (
     RewriteRequest,
     RewriteResponse,
     ImportDocumentRequest,
+    CritiqueResponse,
 )
 from .service import DocumentEngineService
 
@@ -102,6 +103,18 @@ async def rewrite_span(
 ):
     service = DocumentEngineService(db)
     result = await service.rewrite_span(doc_id, current_user["sub"], data.claim_text, data.instruction)
+    await record_usage(db, current_user["sub"], "document_engine")
+    return result
+
+@router.post("/{doc_id}/critique", response_model=CritiqueResponse)
+async def critique_document(
+    doc_id: str,
+    current_user: dict = Depends(get_current_user),
+    _quota: None = Depends(check_usage_quota),
+    db: AsyncSession = Depends(get_db)
+):
+    service = DocumentEngineService(db)
+    result = await service.critique_document(doc_id, current_user["sub"])
     await record_usage(db, current_user["sub"], "document_engine")
     return result
 

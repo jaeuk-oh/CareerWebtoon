@@ -7,6 +7,13 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: str
     NVIDIA_API_BASE_URL: str
 
+    # OpenAI — used only for the writing-critique feature (document_engine.critique_document).
+    # Everything else in the app stays on the NVIDIA catalog above; this is deliberately
+    # scoped to one call site so a per-feature model swap doesn't touch API spend anywhere else.
+    OPENAI_API_KEY: str = ""
+    OPENAI_API_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_CRITIQUE_MODEL: str = "gpt-5-mini"
+
     # Supabase
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str

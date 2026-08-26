@@ -24,6 +24,12 @@ class LLMGateway:
         self.WRITER_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1"
         self.CRITIC_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
+        # OpenAI, kept separate from the NVIDIA catalog above — used only where a
+        # caller explicitly asks for it (currently: document_engine's critique call).
+        self._openai_api_key = settings.OPENAI_API_KEY
+        self._openai_base_url = settings.OPENAI_API_BASE_URL
+        self.CRITIQUE_MODEL = settings.OPENAI_CRITIQUE_MODEL
+
     def _build_messages(self, prompt: str, system_prompt: str = None) -> list[dict]:
         messages = []
         if system_prompt:
@@ -31,13 +37,23 @@ class LLMGateway:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    async def _create(self, *, call_timeout: float = HARD_CALL_TIMEOUT, **kwargs):
+    async def _create(
+        self, *, call_timeout: float = HARD_CALL_TIMEOUT,
+        api_key: str = None, base_url: str = None, **kwargs
+    ):
         # A fresh client (and its own connection pool) per call, not shared across
         # tenacity's retries: cancelling a request via asyncio.wait_for's hard
         # deadline doesn't cleanly unwind httpx's HTTP/2 stream state, and reusing
         # that same client on the next attempt can fail with "Already borrowed"
         # instead of actually retrying against a clean connection.
-        client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url, timeout=call_timeout + 15.0)
+        #
+        # api_key/base_url default to the NVIDIA catalog; a caller passes both
+        # explicitly to reach a different provider (see evaluate_json_openai).
+        client = AsyncOpenAI(
+            api_key=api_key or self._api_key,
+            base_url=base_url or self._base_url,
+            timeout=call_timeout + 15.0
+        )
         try:
             return await asyncio.wait_for(
                 client.chat.completions.create(**kwargs), timeout=call_timeout
@@ -125,6 +141,40 @@ class LLMGateway:
             raise
         # Outside the try: a guard failure must not be swallowed as a generation
         # error and retried, which would re-run the whole (expensive) call.
+        return await enforce_korean(self, result) if korean_only else result
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def evaluate_json_openai(
+        self, prompt: str, system_prompt: str = None, max_tokens: int = 2048,
+        timeout: float = HARD_CALL_TIMEOUT, korean_only: bool = False
+    ) -> dict:
+        """
+        Same contract as evaluate_json, but against OPENAI_CRITIQUE_MODEL instead of
+        the NVIDIA catalog. GPT-5-family models reject two params the NVIDIA call
+        above relies on: `temperature` (only the default of 1 is accepted — omitted
+        entirely here rather than passed as 1, since that reads as "explicitly chose
+        this value" to a future editor) and `max_tokens` (renamed max_completion_tokens).
+        Kept as a separate method rather than branching evaluate_json, since the two
+        providers' accepted parameters don't actually overlap enough to share a body.
+        """
+        try:
+            response = await self._create(
+                call_timeout=timeout,
+                api_key=self._openai_api_key,
+                base_url=self._openai_base_url,
+                model=self.CRITIQUE_MODEL,
+                messages=self._build_messages(prompt, system_prompt),
+                max_completion_tokens=max_tokens,
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content
+            result = json.loads(content)
+        except Exception as e:
+            logger.error(f"Error in evaluate_json_openai: {e!r}")
+            raise
+        # The repair call inside enforce_korean always goes through the NVIDIA
+        # CRITIC_MODEL (see korean_guard.enforce_korean) — cheap and provider-agnostic,
+        # so a critique's rare guard-trip doesn't add to OpenAI spend.
         return await enforce_korean(self, result) if korean_only else result
 
     async def stream_generate(

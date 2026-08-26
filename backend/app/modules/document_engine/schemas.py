@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class GenerateRequest(BaseModel):
     job_id: str
@@ -44,3 +44,16 @@ class RewriteResponse(BaseModel):
     original: str
     rewritten: str
     rationale: str
+
+
+class CritiqueSpan(BaseModel):
+    span_id: str
+    span_text: str
+    category: str  # strength | improvement | suggestion
+    comment: str
+
+
+class CritiqueResponse(BaseModel):
+    document_id: str
+    spans: List[CritiqueSpan]
+    overall_comment: str

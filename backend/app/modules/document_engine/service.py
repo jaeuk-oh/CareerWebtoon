@@ -12,6 +12,7 @@ from .prompts import (
     CAREER_DESC_SYSTEM,
     CLAIM_EXTRACT_SYSTEM,
     REWRITE_SPAN_SYSTEM,
+    CRITIQUE_SYSTEM,
 )
 from app.core.ownership import assert_generated_document_owner
 from app.services.llm_gateway import LLMGateway
@@ -57,6 +58,15 @@ def _normalize_claim_status(value) -> str:
     if isinstance(value, str) and value.strip().upper() in _VALID_CLAIM_STATUSES:
         return value.strip().upper()
     return "UNVERIFIED"
+
+
+_VALID_CRITIQUE_CATEGORIES = {"strength", "improvement", "suggestion"}
+
+
+def _normalize_critique_category(value) -> str:
+    if isinstance(value, str) and value.strip().lower() in _VALID_CRITIQUE_CATEGORIES:
+        return value.strip().lower()
+    return "suggestion"
 
 class DocumentEngineService:
     def __init__(self, db: AsyncSession):
@@ -409,6 +419,59 @@ class DocumentEngineService:
             "original": target,
             "rewritten": rewritten,
             "rationale": (result.get("rationale") or "").strip()
+        }
+
+    async def critique_document(self, doc_id: str, user_id: str) -> dict:
+        """
+        Writing-quality critique: what's well-written, what's weak, what phrasing would
+        read better, plus one overall note on the document's structure and flow. This is
+        deliberately independent of claim/evidence validation — it never checks whether a
+        sentence is factually grounded, only how it reads.
+
+        Not persisted (unlike claims): a fresh critique is generated on every request and
+        held client-side, so there is no history to reconcile with document edits.
+        """
+        await assert_generated_document_owner(self.db, doc_id, user_id)
+
+        doc = await self.get_document(doc_id, user_id)
+        if not doc:
+            raise AppException(status_code=404, detail="문서를 찾을 수 없습니다.")
+
+        content = doc.get("content") or ""
+        if not content.strip():
+            raise AppException(status_code=400, detail="첨삭할 본문이 없습니다.")
+
+        writing_context = await self._build_writing_context(doc["job_id"], user_id)
+        payload = {**writing_context, "document": content}
+
+        # Writing critique reads noticeably better from GPT than from the NVIDIA
+        # catalog used everywhere else in this app, so this one call site is routed
+        # to a separate, cheap OpenAI model instead — see LLMGateway.evaluate_json_openai.
+        result = await self.llm.evaluate_json_openai(
+            system_prompt=CRITIQUE_SYSTEM,
+            prompt=json.dumps(payload, ensure_ascii=False, default=str),
+            max_tokens=4096,
+            timeout=120.0,
+            korean_only=True
+        )
+
+        spans = []
+        for s in result.get("spans", []):
+            span_text = _snap_claim_to_document(s.get("span_text"), content)
+            comment = (s.get("comment") or "").strip()
+            if not span_text or not comment:
+                continue
+            spans.append({
+                "span_id": str(uuid.uuid4()),
+                "span_text": span_text,
+                "category": _normalize_critique_category(s.get("category")),
+                "comment": comment
+            })
+
+        return {
+            "document_id": doc_id,
+            "spans": spans,
+            "overall_comment": (result.get("overall_comment") or "").strip()
         }
 
     async def list_documents(self, job_id: str, user_id: str) -> list:

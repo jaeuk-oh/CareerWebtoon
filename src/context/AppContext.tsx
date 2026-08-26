@@ -9,6 +9,7 @@ import {
   BackendExperience,
   FrontendDocType,
   ValidationResponse,
+  CritiqueResponse,
   JDAnalysisResponse,
   MatchResponse,
   StrategyResponse,
@@ -226,6 +227,9 @@ interface AppContextType {
   evidenceValidation: ValidationResponse | null;
   runEvidenceValidation: (docType: FrontendDocType) => Promise<void>;
 
+  critique: CritiqueResponse | null;
+  runCritique: (docType: FrontendDocType) => Promise<void>;
+
   defenseMessages: DefenseChatMessage[];
   sendDefenseMessage: (text: string, target?: DefenseChatMessage) => Promise<void>;
   runDefenseGeneration: (docType: FrontendDocType) => Promise<void>;
@@ -292,6 +296,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [experiencesLoading, setExperiencesLoading] = useState(true);
   const [evidenceValidation, setEvidenceValidation] = useState<ValidationResponse | null>(null);
+  const [critique, setCritique] = useState<CritiqueResponse | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [pipelineRun, setPipelineRun] = useState<PipelineRun>(INITIAL_PIPELINE_RUN);
   // Async callbacks below close over the state at call time; this ref lets them read
@@ -860,6 +865,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
     setEvidenceValidation(null);
+    setCritique(null);
     // Clear the field first so a regeneration doesn't show new tokens landing on top
     // of the previous draft.
     setDocumentDraft((prev) => ({
@@ -912,6 +918,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const doc = await api.documents.import(activePipelineId, docType, text);
     claimsSyncedContentRef.current[doc.id] = doc.content;
     setEvidenceValidation(null);
+    setCritique(null);
     setDocumentDraft((prev) => ({
       ...prev,
       docType,
@@ -985,6 +992,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updatedAt: new Date().toISOString()
     }));
     showToast('수치 검증이 완료되었습니다.', 'success');
+  };
+
+  // Writing-quality critique (structure/flow/expression), independent of evidence
+  // validation. Not persisted server-side, so this always makes a fresh LLM call —
+  // push the on-screen text up first so the critique reads what the user is looking at.
+  const runCritique = async (docType: FrontendDocType) => {
+    const docId = documentDraft.generatedDocIds?.[docType];
+    if (!docId) {
+      showToast('먼저 "AI 초안 생성"으로 문서를 만들어야 첨삭을 받을 수 있습니다.', 'warning');
+      return;
+    }
+    await saveDocument(docType);
+    const result = await api.documents.critique(docId);
+    setCritique(result);
+    showToast('AI 첨삭이 완료되었습니다.', 'success');
   };
 
   // 방금 생성된 AI 질문 중 가장 최근 것을 찾아 그 질문에 대한 실제 답변 평가를 백엔드에 요청한다.
@@ -1132,6 +1154,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         applyRewrite,
         evidenceValidation,
         runEvidenceValidation,
+        critique,
+        runCritique,
         defenseMessages,
         sendDefenseMessage,
         runDefenseGeneration,
