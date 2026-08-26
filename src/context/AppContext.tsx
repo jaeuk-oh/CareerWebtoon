@@ -602,6 +602,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       refreshUsage();
       return;
     }
+    // 4xx responses carry a message written for the user — it says what's wrong and
+    // what to do about it, which a generic "실패했습니다" throws away. 5xx keeps the
+    // fallback, since those messages are for us, not for them.
+    if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.message) {
+      showToast(err.message, 'warning');
+      return;
+    }
     showToast(fallbackMessage, 'error');
   };
 

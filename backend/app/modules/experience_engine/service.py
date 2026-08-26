@@ -3,6 +3,8 @@ import json
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from app.core.exceptions import AppException
+from app.services.grounding_guard import source_is_too_thin, strip_ungrounded
 from app.services.llm_gateway import LLMGateway
 from app.modules.experience_engine.schemas import DecomposeResponse, ThreeCFourPResponse, EvidenceItem, AnchorItem
 from app.modules.experience_engine.prompts import THREE_C_FOUR_P_SYSTEM, EVIDENCE_SYSTEM, ANCHOR_SYSTEM
@@ -20,6 +22,27 @@ class ExperienceEngineService:
         
         if not experience:
             raise ValueError("Experience not found or not owned by user")
+
+        # Nothing to decompose means nothing to say. Asked to break down an experience
+        # whose whole content was its own title, the model invented a team, a cause, and
+        # a figure ("일일 평균 상담 건수 50건") that appeared nowhere in the input. Refusing
+        # here is the honest answer, and it costs no LLM call.
+        if source_is_too_thin(
+            experience.get("title", ""),
+            experience.get("description", ""),
+            " ".join(
+                str(experience.get(k) or "")
+                for k in ("situation", "task", "action", "result", "role")
+            ),
+        ):
+            raise AppException(
+                status_code=422,
+                detail=(
+                    "경험 내용이 너무 짧아 분해할 수 없습니다. 어떤 상황이었고 무엇을 했는지, "
+                    "결과가 어땠는지 설명란에 조금 더 적어주세요. 적어주신 내용만으로 분석하기 때문에, "
+                    "내용이 없으면 AI가 지어내게 됩니다."
+                ),
+            )
 
         content_to_analyze = f"Title: {experience.get('title', '')}\nDescription: {experience.get('description', '')}"
         if experience.get('situation'):
@@ -39,7 +62,14 @@ class ExperienceEngineService:
             self.llm_gateway.generate_json(prompt=content_to_analyze, system_prompt=EVIDENCE_SYSTEM),
             self.llm_gateway.generate_json(prompt=content_to_analyze, system_prompt=ANCHOR_SYSTEM),
         )
-        
+
+        # The prompt asks the model to stick to the source; this checks that it did.
+        # Any statement citing a number the user never wrote is dropped rather than
+        # saved — an invented figure is the worst thing to carry into an interview.
+        three_c_four_p_res = strip_ungrounded(three_c_four_p_res, content_to_analyze)
+        evidence_res = strip_ungrounded(evidence_res, content_to_analyze)
+
+
         # Ensure 3C4P Response matches Schema
         three_c_four_p_id = str(uuid.uuid4())
         
