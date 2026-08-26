@@ -260,6 +260,8 @@ export interface UsageResponse {
   free_limit: number;
   credit_balance: number;
   resets_at: string;
+  /** Admin accounts bypass the quota entirely, so the counter doesn't apply to them. */
+  is_admin?: boolean;
 }
 
 export interface CreditPackInfo {

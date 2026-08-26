@@ -30,3 +30,7 @@ class UsageResponse(BaseModel):
     free_limit: int
     credit_balance: int
     resets_at: str
+    # Admin accounts skip the quota entirely (see core/usage.check_usage_quota).
+    # Without this the header keeps counting toward a limit that never applies,
+    # which reads as "you're blocked" when nothing is actually blocking.
+    is_admin: bool = False

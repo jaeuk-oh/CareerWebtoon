@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.core.plans import CREDIT_PACKS, FREE_MONTHLY_QUOTA
-from app.core.usage import current_period_start, get_credit_balance, get_current_usage
+from app.core.usage import is_admin, current_period_start, get_credit_balance, get_current_usage
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class BillingService:
             "client_key": self._client_key,
         }
 
-    async def confirm_payment(self, user_id: str, payment_key: str, order_id: str, amount: int) -> dict:
+    async def confirm_payment(self, user_id: str, payment_key: str, order_id: str, amount: int, email: str | None = None) -> dict:
         res = await self.db.execute(
             text("""
                 SELECT status, amount, credits FROM credit_purchases
@@ -73,7 +73,7 @@ class BillingService:
         if status == "confirmed":
             # Idempotent: a reloaded success page or a duplicate confirm call must not
             # credit the balance twice.
-            return await self.get_usage(user_id)
+            return await self.get_usage(user_id, email)
         if expected_amount != amount:
             raise AppException(status_code=400, detail="결제 금액이 일치하지 않습니다.")
 
@@ -112,9 +112,9 @@ class BillingService:
             """),
             {"user_id": user_id, "credits": credits},
         )
-        return await self.get_usage(user_id)
+        return await self.get_usage(user_id, email)
 
-    async def get_usage(self, user_id: str) -> dict:
+    async def get_usage(self, user_id: str, email: str | None = None) -> dict:
         free_used = await get_current_usage(self.db, user_id)
         balance = await get_credit_balance(self.db, user_id)
 
@@ -129,4 +129,5 @@ class BillingService:
             "free_limit": FREE_MONTHLY_QUOTA,
             "credit_balance": balance,
             "resets_at": resets_at.isoformat(),
+            "is_admin": is_admin(email),
         }

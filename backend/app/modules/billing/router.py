@@ -33,7 +33,9 @@ async def confirm_payment(
     db: AsyncSession = Depends(get_db),
 ):
     service = BillingService(db)
-    return await service.confirm_payment(current_user["sub"], data.payment_key, data.order_id, data.amount)
+    return await service.confirm_payment(
+        current_user["sub"], data.payment_key, data.order_id, data.amount, current_user.get("email")
+    )
 
 
 @router.get("/usage", response_model=UsageResponse)
@@ -42,4 +44,4 @@ async def get_usage(
     db: AsyncSession = Depends(get_db),
 ):
     service = BillingService(db)
-    return await service.get_usage(current_user["sub"])
+    return await service.get_usage(current_user["sub"], current_user.get("email"))

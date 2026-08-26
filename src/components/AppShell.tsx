@@ -218,24 +218,32 @@ export const AppShell: React.FC<AppShellProps> = ({
             <div className="flex flex-shrink-0 items-center gap-2.5">
               {actions}
 
-              {usage && (
-                <div
-                  className={cn(
-                    'hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold xl:flex',
-                    usage.free_used >= usage.free_limit && usage.credit_balance <= 0
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-slate-200 bg-slate-50 text-slate-600'
-                  )}
-                >
-                  무료 <strong>{usage.free_used}/{usage.free_limit}회</strong>
-                  {usage.credit_balance > 0 && (
-                    <>
-                      <span className="text-slate-300">·</span>
-                      충전 <strong>{usage.credit_balance}회</strong> 남음
-                    </>
-                  )}
-                </div>
-              )}
+              {usage &&
+                (usage.is_admin ? (
+                  // The quota never applies to this account, so showing a counter
+                  // filling toward a limit reads as "you're blocked" when nothing is.
+                  <div className="hidden items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-bold text-brand-700 xl:flex">
+                    <ShieldCheck size={13} />
+                    Admin · 사용 제한 없음
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      'hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold xl:flex',
+                      usage.free_used >= usage.free_limit && usage.credit_balance <= 0
+                        ? 'border-red-200 bg-red-50 text-red-700'
+                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                    )}
+                  >
+                    무료 <strong>{usage.free_used}/{usage.free_limit}회</strong>
+                    {usage.credit_balance > 0 && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        충전 <strong>{usage.credit_balance}회</strong> 남음
+                      </>
+                    )}
+                  </div>
+                ))}
 
               <button
                 type="button"
